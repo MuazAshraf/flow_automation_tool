@@ -1,0 +1,35 @@
+{
+  "name": "veo-flow-extension",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "description": "Automate bulk video generation on Google Flow with VEO AI",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build && npm run copy-extension-files",
+    "build:extension": "vite build && npm run copy-extension-files",
+    "copy-extension-files": "node scripts/copy-extension-files.mjs",
+    "lint": "eslint .",
+    "preview": "vite preview",
+    "icons": "node scripts/generate-icons.mjs"
+  },
+  "dependencies": {
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0"
+  },
+  "devDependencies": {
+    "@crxjs/vite-plugin": "^2.3.0",
+    "@eslint/js": "^9.39.1",
+    "@types/react": "^19.2.5",
+    "@types/react-dom": "^19.2.3",
+    "@vitejs/plugin-react": "^5.1.1",
+    "autoprefixer": "^10.4.23",
+    "eslint": "^9.39.1",
+    "eslint-plugin-react-hooks": "^7.0.1",
+    "eslint-plugin-react-refresh": "^0.4.24",
+    "globals": "^16.5.0",
+    "postcss": "^8.5.6",
+    "tailwindcss": "^3.4.19",
+    "vite": "^7.2.4"
+  }
+}

@@ -1,0 +1,174 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Modern Black, White & Parrot Green Theme */
+:root {
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  line-height: 1.5;
+  font-weight: 400;
+  color-scheme: dark;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+
+  --primary: #56CC38;
+  --primary-dark: #45a82e;
+  --black: #000000;
+  --white: #ffffff;
+}
+
+html, body, #root {
+  width: 420px;
+  min-height: 600px;
+  max-height: 650px;
+  margin: 0;
+  padding: 0;
+  overflow-x: hidden;
+}
+
+body {
+  background-color: #000000;
+  color: #ffffff;
+}
+
+/* Custom scrollbar - Green accent */
+::-webkit-scrollbar {
+  width: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: #000000;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #56CC38;
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #6fd954;
+}
+
+/* Input and textarea styling */
+input, textarea, select {
+  background-color: #0a0a0a;
+  border: 1px solid #1a1a1a;
+  color: #ffffff;
+  border-radius: 8px;
+  padding: 10px 14px;
+  font-size: 14px;
+  outline: none;
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+input:focus, textarea:focus, select:focus {
+  border-color: #56CC38;
+  box-shadow: 0 0 0 2px rgba(86, 204, 56, 0.2);
+}
+
+input::placeholder, textarea::placeholder {
+  color: #666666;
+}
+
+select {
+  cursor: pointer;
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%2356CC38' d='M6 8L2 4h8z'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 12px center;
+  padding-right: 32px;
+}
+
+/* Button styles */
+.btn {
+  @apply px-4 py-2.5 rounded-lg font-semibold transition-all duration-200 flex items-center justify-center gap-2;
+}
+
+.btn-primary {
+  background-color: #56CC38;
+  color: #000000;
+}
+.btn-primary:hover {
+  background-color: #6fd954;
+}
+
+.btn-success {
+  background-color: #56CC38;
+  color: #000000;
+}
+.btn-success:hover {
+  background-color: #6fd954;
+}
+
+.btn-warning {
+  background-color: #56CC38;
+  color: #000000;
+}
+.btn-warning:hover {
+  background-color: #6fd954;
+}
+
+.btn-danger {
+  background-color: #ff4757;
+  color: #ffffff;
+}
+.btn-danger:hover {
+  background-color: #ff6b7a;
+}
+
+.btn-secondary {
+  background-color: #0a0a0a;
+  border: 1px solid #1a1a1a;
+  color: #ffffff;
+}
+.btn-secondary:hover {
+  background-color: #141414;
+  border-color: #56CC38;
+}
+
+/* Tab styles */
+.tab {
+  @apply px-4 py-2.5 text-sm font-medium transition-colors cursor-pointer flex items-center gap-2;
+  color: #666666;
+}
+
+.tab:hover {
+  color: #ffffff;
+}
+
+.tab.active {
+  color: #56CC38;
+  border-bottom: 2px solid #56CC38;
+}
+
+/* Card styles */
+.card {
+  background-color: #0a0a0a;
+  border: 1px solid #1a1a1a;
+  border-radius: 12px;
+  padding: 16px;
+}
+
+/* Toggle switch */
+.toggle {
+  @apply relative inline-flex h-6 w-11 items-center rounded-full transition-colors cursor-pointer;
+}
+
+.toggle-enabled {
+  background-color: #56CC38;
+}
+
+.toggle-disabled {
+  background-color: #1a1a1a;
+}
+
+.toggle-knob {
+  @apply inline-block h-4 w-4 transform rounded-full bg-white transition-transform shadow-md;
+}
+
+/* Section headers */
+h2.text-accent-teal, .text-accent-teal {
+  color: #56CC38 !important;
+}
