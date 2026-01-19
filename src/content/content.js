@@ -361,31 +361,46 @@ async function clickStartProject() {
 
 // Open settings panel if it exists (some settings might be behind a gear icon)
 async function openSettingsIfNeeded() {
+  console.log("VeoFlow: Checking if settings panel needs to be opened...");
+
   // Look for settings/gear button that might need to be clicked
   // Priority: "tune" icon (Google Flow standard), then aria-labels
   const allButtons = Array.from(document.querySelectorAll('button'));
-  const settingsBtn = allButtons.find(btn => {
+
+  for (const btn of allButtons) {
+    if (!isElementVisible(btn)) continue;
+
     const text = (btn.textContent || "").toLowerCase();
     const iconText = btn.querySelector('i, span.material-icons, span.google-symbols')?.textContent || "";
     const ariaLabel = (btn.getAttribute("aria-label") || "").toLowerCase();
-    
-    return (
-      text.includes("tune") || 
-      iconText.includes("tune") ||
-      ariaLabel.includes("settings") || 
-      ariaLabel.includes("options")
-    );
-  });
 
-  if (settingsBtn && isElementVisible(settingsBtn)) {
-    // Check if settings panel is already open
-    const settingsPanel = document.querySelector('[role="dialog"][class*="Popover"], [class*="settings-panel"]');
-    if (!settingsPanel || !isElementVisible(settingsPanel)) {
+    const isTuneButton = (
+      text.includes("tune") ||
+      iconText.includes("tune") ||
+      ariaLabel.includes("settings") ||
+      ariaLabel.includes("options") ||
+      ariaLabel.includes("tune")
+    );
+
+    if (isTuneButton) {
+      console.log("VeoFlow: Found settings button:", text || iconText || ariaLabel);
+
+      // Check if settings panel is already open
+      const settingsPanel = document.querySelector('[role="dialog"][class*="Popover"], [class*="settings-panel"], [class*="PopoverContent"]');
+      if (settingsPanel && isElementVisible(settingsPanel)) {
+        console.log("VeoFlow: Settings panel already open");
+        return true;
+      }
+
       console.log("VeoFlow: Opening settings panel...");
-      await clickElement(settingsBtn);
-      await sleep(400);
+      await clickElement(btn);
+      await sleep(500);
+      return true;
     }
   }
+
+  console.log("VeoFlow: No settings button found (settings may be directly accessible)");
+  return false;
 }
 
 // Select model - handles both video (Veo) and image models
@@ -471,63 +486,139 @@ async function selectModel(modelValue, isImageMode = false) {
   }
 }
 
-// Select aspect ratio - Google Flow uses "16:9" and "9:16"
+// Select aspect ratio - Google Flow uses "Landscape (16:9)" and "Portrait (9:16)"
 async function selectRatio(ratio) {
   if (!ratio) return true;
 
-  // Map setting value to what Google Flow shows
-  const targetRatio = ratio === "landscape" ? "16:9" : "9:16";
-  const otherRatio = ratio === "landscape" ? "9:16" : "16:9";
+  // Map setting value to what to search for
+  const isLandscape = ratio === "landscape";
+  // What we want
+  const targetText = isLandscape ? "landscape" : "portrait";
+  const targetRatio = isLandscape ? "16:9" : "9:16";
+  // The OPPOSITE of what we want - used to detect if we need to change
+  const oppositeText = isLandscape ? "portrait" : "landscape";
+  const oppositeRatio = isLandscape ? "9:16" : "16:9";
 
-  console.log("VeoFlow: Selecting ratio:", targetRatio);
+  console.log("VeoFlow: ===== SELECT RATIO =====");
+  console.log("VeoFlow: User setting value:", ratio);
+  console.log("VeoFlow: isLandscape:", isLandscape);
+  console.log("VeoFlow: WANT:", targetText, "(" + targetRatio + ")");
+  console.log("VeoFlow: DON'T WANT:", oppositeText, "(" + oppositeRatio + ")");
 
   try {
-    // Find button showing current ratio (contains "16:9" or "9:16")
+    // Find ALL buttons and log them to debug
     const buttons = document.querySelectorAll('button');
+    let ratioButton = null;
+
+    console.log("VeoFlow: Scanning", buttons.length, "buttons for ratio selector...");
+    let buttonIndex = 0;
     for (const btn of buttons) {
-      const text = btn.textContent;
-      if ((text.includes("16:9") || text.includes("9:16")) && isElementVisible(btn)) {
-        // Already correct?
-        if (text.includes(targetRatio)) {
-          console.log("VeoFlow: Ratio already correct:", targetRatio);
-          return true;
-        }
+      if (!isElementVisible(btn)) continue;
+      buttonIndex++;
 
-        // Click to open dropdown
-        console.log("VeoFlow: Opening ratio dropdown...");
-        await clickElement(btn);
+      const btnText = btn.textContent.toLowerCase();
+      const innerHTML = btn.innerHTML.toLowerCase();
+
+      // Look for button that contains ratio-related text
+      const hasLandscape = btnText.includes("landscape") || innerHTML.includes("crop_landscape");
+      const hasPortrait = btnText.includes("portrait") || innerHTML.includes("crop_portrait");
+      const has169 = btnText.includes("16:9");
+      const has916 = btnText.includes("9:16");
+
+      // Buttons to exclude
+      const isModelButton = btnText.includes("veo") || btnText.includes("nano") || btnText.includes("imagen");
+      const isOutputButton = btnText.includes("output");
+      const isModeButton = btnText.includes("text to") || btnText.includes("frames to") || btnText.includes("create image");
+
+      if ((hasLandscape || hasPortrait || has169 || has916) && !isModelButton && !isOutputButton && !isModeButton) {
+        console.log("VeoFlow: Button", buttonIndex, "MATCHES ratio pattern:", btnText.substring(0, 60));
+        ratioButton = btn;
+        break;
+      }
+    }
+
+    if (!ratioButton) {
+      console.log("VeoFlow: ERROR - No ratio button found on page!");
+      console.log("VeoFlow: Dumping all visible buttons for debugging:");
+      let idx = 0;
+      for (const btn of buttons) {
+        if (!isElementVisible(btn)) continue;
+        idx++;
+        console.log("  Button", idx, ":", btn.textContent.substring(0, 80).replace(/\s+/g, ' '));
+      }
+      return true;
+    }
+
+    const currentBtnText = ratioButton.textContent.toLowerCase();
+    const currentInnerHTML = ratioButton.innerHTML.toLowerCase();
+    console.log("VeoFlow: Found ratio button:", currentBtnText.substring(0, 60));
+
+    // Determine current state from button
+    const btnShowsLandscape = currentBtnText.includes("landscape") || currentInnerHTML.includes("crop_landscape") || currentBtnText.includes("16:9");
+    const btnShowsPortrait = currentBtnText.includes("portrait") || currentInnerHTML.includes("crop_portrait") || currentBtnText.includes("9:16");
+
+    console.log("VeoFlow: Button shows landscape:", btnShowsLandscape);
+    console.log("VeoFlow: Button shows portrait:", btnShowsPortrait);
+
+    // Check if already showing correct ratio
+    if (isLandscape && btnShowsLandscape && !btnShowsPortrait) {
+      console.log("VeoFlow: Already showing LANDSCAPE - no change needed!");
+      return true;
+    }
+    if (!isLandscape && btnShowsPortrait && !btnShowsLandscape) {
+      console.log("VeoFlow: Already showing PORTRAIT - no change needed!");
+      return true;
+    }
+
+    // Need to change - click to open dropdown
+    console.log("VeoFlow: Current ratio is WRONG. Opening dropdown to change...");
+    await clickElement(ratioButton);
+    await sleep(600);
+
+    // Find all options in dropdown
+    const options = document.querySelectorAll('[role="option"]');
+    console.log("VeoFlow: Found", options.length, "dropdown options");
+
+    // Log ALL options for debugging
+    console.log("VeoFlow: Listing all options:");
+    for (const opt of options) {
+      console.log("  Option:", opt.textContent.substring(0, 60));
+    }
+
+    // Find the option that matches our target
+    for (const opt of options) {
+      if (!isElementVisible(opt)) continue;
+
+      const optText = opt.textContent.toLowerCase();
+      const optHTML = opt.innerHTML.toLowerCase();
+
+      // Check if this option matches what we want
+      const optIsLandscape = optText.includes("landscape") || optHTML.includes("crop_landscape") || optText.includes("16:9");
+      const optIsPortrait = optText.includes("portrait") || optHTML.includes("crop_portrait") || optText.includes("9:16");
+
+      console.log("VeoFlow: Option check - text:", optText.substring(0, 40), "| isLandscape:", optIsLandscape, "| isPortrait:", optIsPortrait);
+
+      // Select the option that matches our target
+      if (isLandscape && optIsLandscape && !optIsPortrait) {
+        console.log("VeoFlow: CLICKING LANDSCAPE option!");
+        await clickElement(opt);
         await sleep(400);
-
-        // Find and click target option
-        const options = document.querySelectorAll('[role="option"], [role="menuitem"], div[class*="option"], li');
-        for (const opt of options) {
-          if (opt.textContent.includes(targetRatio) && isElementVisible(opt)) {
-            console.log("VeoFlow: Clicking ratio option:", targetRatio);
-            await clickElement(opt);
-            await sleep(300);
-            return true;
-          }
-        }
-
-        // Fallback: look for any clickable element with the target ratio
-        const allElements = document.querySelectorAll('div, span, button');
-        for (const el of allElements) {
-          const elText = el.textContent.trim();
-          if (elText.includes(targetRatio) && !elText.includes(otherRatio) && isElementVisible(el)) {
-            console.log("VeoFlow: Clicking ratio element (fallback):", elText);
-            await clickElement(el);
-            await sleep(300);
-            return true;
-          }
-        }
-
-        // Close dropdown if nothing found
-        document.body.click();
-        console.log("VeoFlow: Could not find ratio option:", targetRatio);
+        console.log("VeoFlow: Ratio changed to LANDSCAPE (16:9)");
+        return true;
+      }
+      if (!isLandscape && optIsPortrait && !optIsLandscape) {
+        console.log("VeoFlow: CLICKING PORTRAIT option!");
+        await clickElement(opt);
+        await sleep(400);
+        console.log("VeoFlow: Ratio changed to PORTRAIT (9:16)");
         return true;
       }
     }
-    console.log("VeoFlow: No ratio button found on page");
+
+    // If we get here, we didn't find our target. Close dropdown.
+    console.log("VeoFlow: ERROR - Could not find target ratio option!");
+    document.body.click();
+    await sleep(200);
     return true;
   } catch (e) {
     console.error("VeoFlow: selectRatio error:", e);
@@ -933,7 +1024,7 @@ async function downloadVideo(folder) {
         const folderName = folder || "VeoFlow";
         const fileName = `${folderName}/video_${index}_${Date.now()}.mp4`;
         console.log("VeoFlow: Downloading to:", fileName);
-        
+
         chrome.runtime.sendMessage({
           type: 'DOWNLOAD_URL',
           data: {
@@ -1023,7 +1114,7 @@ async function uploadImage(imageData) {
 async function applySettings(mode, settings) {
   console.log("VeoFlow: ===== APPLYING SETTINGS (ONCE) =====");
   console.log("VeoFlow: Mode:", mode);
-  console.log("VeoFlow: Settings:", settings);
+  console.log("VeoFlow: Settings:", JSON.stringify(settings));
 
   const isImageMode = mode === 'create-image';
 
@@ -1038,26 +1129,47 @@ async function applySettings(mode, settings) {
     resolvedModel = "veo-3.1-fast";
   }
 
+  console.log("VeoFlow: Resolved model:", resolvedModel);
+  console.log("VeoFlow: Ratio from settings:", settings.ratio);
+  console.log("VeoFlow: Output count from settings:", settings.outputCount);
+
   try {
-    // 1. Select creation mode
+    // 1. Select creation mode FIRST
+    console.log("VeoFlow: Step 1 - Setting creation mode:", mode);
     await selectCreationMode(mode);
-    await sleep(800);
+    await sleep(1000); // Wait for mode change to take effect
 
-    // 2. Apply model
+    // 2. Open the settings panel (the tune/gear icon button)
+    console.log("VeoFlow: Step 2 - Opening settings panel...");
+    await openSettingsIfNeeded();
+    await sleep(500);
+
+    // 3. Apply model
+    console.log("VeoFlow: Step 3 - Setting model:", resolvedModel);
     await selectModel(resolvedModel, isImageMode);
+    await sleep(500);
 
-    // 3. Apply ratio
-    await selectRatio(settings.ratio || 'landscape');
+    // 4. Apply ratio - IMPORTANT: Use exact value from settings
+    const ratioValue = settings.ratio || 'landscape';
+    console.log("VeoFlow: Step 4 - Setting ratio:", ratioValue);
+    await selectRatio(ratioValue);
+    await sleep(500);
 
-    // 4. Apply output count
-    await selectOutputCount(settings.outputCount || '1');
-
-    // 5. Close any open dropdowns/popups
-    console.log("VeoFlow: Closing popups...");
-    document.body.click();
+    // 5. Apply output count
+    const outputValue = settings.outputCount || '1';
+    console.log("VeoFlow: Step 5 - Setting output count:", outputValue);
+    await selectOutputCount(outputValue);
     await sleep(300);
 
-    console.log("VeoFlow: ===== SETTINGS APPLIED =====");
+    // 6. Close any open dropdowns/popups by clicking outside
+    console.log("VeoFlow: Step 6 - Closing all popups...");
+    document.body.click();
+    await sleep(300);
+    // Double-click to ensure all popups are closed
+    document.body.click();
+    await sleep(200);
+
+    console.log("VeoFlow: ===== ALL SETTINGS APPLIED SUCCESSFULLY =====");
     return { success: true };
   } catch (error) {
     console.error("VeoFlow: applySettings error:", error);
