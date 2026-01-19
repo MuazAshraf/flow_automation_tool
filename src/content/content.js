@@ -1,16 +1,16 @@
-// Prevent duplicate script injection - if already loaded, exit immediately
-if (window.__VEOFLOW_CONTENT_SCRIPT_LOADED__) {
-  console.log("VeoFlow: Content script already loaded, skipping duplicate injection");
+// Prevent duplicate script injection - STOP if already loaded
+if (window.__VEOFLOW_LOADED__) {
+  // Script already loaded, do nothing
 } else {
-  window.__VEOFLOW_CONTENT_SCRIPT_LOADED__ = true;
-  console.log("VeoFlow content script loaded on:", window.location.href);
+  window.__VEOFLOW_LOADED__ = true;
+  window.__VEOFLOW_PROCESSED_TASKS__ = window.__VEOFLOW_PROCESSED_TASKS__ || new Set();
+  window.__VEOFLOW_IS_AUTOMATING__ = false;
+  console.log("VeoFlow content script loaded");
 }
 
-// State tracking
-let isAutomating = false;
-
-// Track processed task IDs to prevent double execution
-const processedTaskIds = new Set();
+// Use window-level state to persist across injections
+const processedTaskIds = window.__VEOFLOW_PROCESSED_TASKS__;
+let isAutomating = window.__VEOFLOW_IS_AUTOMATING__;
 
 // Helper: Sleep
 function sleep(ms) {
@@ -359,314 +359,317 @@ async function clickStartProject() {
   return false;
 }
 
-// Step 2: Select model from dropdown
-// Google Flow has "Model" dropdown with options like "Veo 3.1 - Fast", "Veo 3.1 - Quality", etc.
-async function selectModel(modelValue) {
-  console.log("Selecting model:", modelValue);
+// Open settings panel if it exists (some settings might be behind a gear icon)
+async function openSettingsIfNeeded() {
+  // Look for settings/gear button that might need to be clicked
+  // Priority: "tune" icon (Google Flow standard), then aria-labels
+  const allButtons = Array.from(document.querySelectorAll('button'));
+  const settingsBtn = allButtons.find(btn => {
+    const text = (btn.textContent || "").toLowerCase();
+    const iconText = btn.querySelector('i, span.material-icons, span.google-symbols')?.textContent || "";
+    const ariaLabel = (btn.getAttribute("aria-label") || "").toLowerCase();
+    
+    return (
+      text.includes("tune") || 
+      iconText.includes("tune") ||
+      ariaLabel.includes("settings") || 
+      ariaLabel.includes("options")
+    );
+  });
 
-  const modelMap = {
-    "veo-3.1-fast": ["veo 3.1 - fast", "3.1 - fast", "fast"],
-    "veo-3.1-quality": ["veo 3.1 - quality", "3.1 - quality", "quality"],
-    "veo-3.1-low-priority": ["veo 3.1 - low", "low priority", "low-priority"],
-    "veo-2.0": ["veo 2.0", "veo 2", "2.0"],
+  if (settingsBtn && isElementVisible(settingsBtn)) {
+    // Check if settings panel is already open
+    const settingsPanel = document.querySelector('[role="dialog"][class*="Popover"], [class*="settings-panel"]');
+    if (!settingsPanel || !isElementVisible(settingsPanel)) {
+      console.log("VeoFlow: Opening settings panel...");
+      await clickElement(settingsBtn);
+      await sleep(400);
+    }
+  }
+}
+
+// Select model - handles both video (Veo) and image models
+async function selectModel(modelValue, isImageMode = false) {
+  if (!modelValue) return true;
+
+  // Map for video models - EXACT text to search for in dropdown
+  const videoModelMap = {
+    "veo-3.1-fast": "3.1 - fast",
+    "veo-3.1-quality": "3.1 - quality",
+    "veo-2-fast": "2 - fast",
+    "veo-2-quality": "2 - quality"
   };
 
-  const searchTerms = modelMap[modelValue] || ["fast"];
+  // Map for image models
+  const imageModelMap = {
+    "imagen-4": "imagen 4",
+    "nano-banana": "nano banana",
+    "nano-banana-pro": "banana pro"
+  };
+
+  const modelMap = isImageMode ? imageModelMap : videoModelMap;
+  const targetText = (modelMap[modelValue] || modelValue).toLowerCase();
+
+  console.log("VeoFlow: ===== SELECT MODEL =====");
+  console.log("VeoFlow: modelValue:", modelValue);
+  console.log("VeoFlow: targetText:", targetText);
+  console.log("VeoFlow: isImageMode:", isImageMode);
 
   try {
-    // Method 1: Find "Model" dropdown by looking for nearby label text
-    const allElements = document.querySelectorAll('*');
+    // Find button showing current model (contains "veo" for video, or image keywords)
+    const modelKeywords = isImageMode ? ["imagen", "nano", "banana"] : ["veo"];
+    const buttons = document.querySelectorAll('button');
 
-    for (const el of allElements) {
-      const text = (el.textContent || "").toLowerCase();
+    for (const btn of buttons) {
+      const btnText = btn.textContent.toLowerCase();
+      const hasModelKeyword = modelKeywords.some(kw => btnText.includes(kw));
 
-      // Look for element with "Model" label (but not "Model" inside option text)
-      if (text.includes("model") && el.children.length < 10) {
-        const dropdown = el.querySelector('button, [role="combobox"], [aria-haspopup]') ||
-                        el.closest('[role="combobox"]') ||
-                        el.parentElement?.querySelector('button[aria-haspopup], [role="combobox"]');
+      if (hasModelKeyword && isElementVisible(btn)) {
+        console.log("VeoFlow: Found model button:", btnText.substring(0, 40));
 
-        if (dropdown && dropdown.offsetParent !== null) {
-          // Check if this dropdown contains "veo" (model dropdown)
-          const dropdownText = (dropdown.textContent || "").toLowerCase();
-          if (dropdownText.includes("veo") || dropdownText.includes("model")) {
-            await clickElement(dropdown);
-            await sleep(500);
-
-            // Look for option matching our model
-            const options = document.querySelectorAll(
-              '[role="option"], [role="menuitem"], li, [class*="option"]'
-            );
-
-            for (const option of options) {
-              const optionText = (option.textContent || "").toLowerCase();
-              for (const term of searchTerms) {
-                if (optionText.includes(term.toLowerCase())) {
-                  await clickElement(option);
-                  console.log("Selected model:", optionText);
-                  await sleep(300);
-                  return true;
-                }
-              }
-            }
-
-            // Close dropdown if opened but no match
-            document.body.click();
-            await sleep(200);
-          }
+        // Check if already showing correct model
+        if (btnText.includes(targetText)) {
+          console.log("VeoFlow: Model already correct!");
+          return true;
         }
-      }
-    }
 
-    // Method 2: Find dropdown showing "Veo" in its text (model dropdown)
-    const dropdowns = document.querySelectorAll(
-      'button[aria-haspopup], [role="combobox"], [role="listbox"]'
-    );
-
-    for (const dropdown of dropdowns) {
-      const text = (dropdown.textContent || "").toLowerCase();
-
-      if (text.includes("veo")) {
-        await clickElement(dropdown);
+        // Click to open dropdown
+        console.log("VeoFlow: Clicking to open model dropdown...");
+        await clickElement(btn);
         await sleep(500);
 
-        const options = document.querySelectorAll(
-          '[role="option"], [role="menuitem"], li, [class*="option"]'
-        );
+        // Find all options and log them
+        const options = document.querySelectorAll('[role="option"]');
+        console.log("VeoFlow: Found", options.length, "options in dropdown");
 
-        for (const option of options) {
-          const optionText = (option.textContent || "").toLowerCase();
-          for (const term of searchTerms) {
-            if (optionText.includes(term.toLowerCase())) {
-              await clickElement(option);
-              console.log("Selected model from Veo dropdown:", optionText);
-              await sleep(300);
-              return true;
-            }
-          }
-        }
+        // Search through options
+        for (const opt of options) {
+          const optText = opt.textContent.toLowerCase();
+          console.log("VeoFlow: Option:", optText.substring(0, 40));
 
-        document.body.click();
-        await sleep(200);
-      }
-    }
-
-    console.log("Model selector not found - Flow may use default");
-    return false;
-  } catch (e) {
-    console.warn("Model selection failed:", e);
-    return false;
-  }
-}
-
-// Step 3: Select aspect ratio
-// Google Flow has "Aspect Ratio" dropdown with "Landscape (16:9)" and "Portrait (9:16)"
-async function selectRatio(ratio) {
-  console.log("Selecting ratio:", ratio);
-
-  const isLandscape = ratio === "landscape";
-  const searchTerms = isLandscape
-    ? ["landscape (16:9)", "landscape", "16:9"]
-    : ["portrait (9:16)", "portrait", "9:16"];
-
-  try {
-    // Method 1: Find "Aspect Ratio" dropdown by looking for nearby label text
-    const allElements = document.querySelectorAll('*');
-
-    for (const el of allElements) {
-      const text = (el.textContent || "").toLowerCase();
-
-      // Look for element with "Aspect Ratio" label
-      if (text.includes("aspect ratio")) {
-        const dropdown = el.querySelector('button, [role="combobox"], [aria-haspopup]') ||
-                        el.closest('[role="combobox"]') ||
-                        el.parentElement?.querySelector('button[aria-haspopup], [role="combobox"]');
-
-        if (dropdown && dropdown.offsetParent !== null) {
-          const dropdownText = (dropdown.textContent || "").toLowerCase();
-          // Make sure this is the aspect ratio dropdown (contains landscape/portrait or 16:9/9:16)
-          if (dropdownText.includes("landscape") || dropdownText.includes("portrait") ||
-              dropdownText.includes("16:9") || dropdownText.includes("9:16")) {
-            await clickElement(dropdown);
-            await sleep(500);
-
-            // Look for option matching our ratio
-            const options = document.querySelectorAll(
-              '[role="option"], [role="menuitem"], li, [class*="option"]'
-            );
-
-            for (const option of options) {
-              const optionText = (option.textContent || "").toLowerCase();
-              for (const term of searchTerms) {
-                if (optionText.includes(term.toLowerCase())) {
-                  await clickElement(option);
-                  console.log("Selected aspect ratio:", optionText);
-                  await sleep(300);
-                  return true;
-                }
-              }
-            }
-
-            // Close dropdown if opened but no match
-            document.body.click();
-            await sleep(200);
-          }
-        }
-      }
-    }
-
-    // Method 2: Find dropdown showing "Landscape" or "Portrait" in its text
-    const dropdowns = document.querySelectorAll(
-      'button[aria-haspopup], [role="combobox"], [role="listbox"]'
-    );
-
-    for (const dropdown of dropdowns) {
-      const text = (dropdown.textContent || "").toLowerCase();
-
-      if (text.includes("landscape") || text.includes("portrait") ||
-          text.includes("16:9") || text.includes("9:16")) {
-        await clickElement(dropdown);
-        await sleep(500);
-
-        const options = document.querySelectorAll(
-          '[role="option"], [role="menuitem"], li, [class*="option"]'
-        );
-
-        for (const option of options) {
-          const optionText = (option.textContent || "").toLowerCase();
-          for (const term of searchTerms) {
-            if (optionText.includes(term.toLowerCase())) {
-              await clickElement(option);
-              console.log("Selected aspect ratio from dropdown:", optionText);
-              await sleep(300);
-              return true;
-            }
-          }
-        }
-
-        document.body.click();
-        await sleep(200);
-      }
-    }
-
-    console.log("Aspect ratio selector not found - Flow may use default");
-    return false;
-  } catch (e) {
-    console.warn("Aspect ratio selection failed:", e);
-    return false;
-  }
-}
-
-// Step 4: Select output count (1-4 videos per prompt) - CRITICAL to avoid token burn!
-// Google Flow has "Outputs per prompt" dropdown with values 1, 2, 3, 4
-async function selectOutputCount(count) {
-  const targetCount = parseInt(count) || 1;
-  console.log("Selecting output count:", targetCount);
-
-  try {
-    // Method 1: Find "Outputs per prompt" dropdown by looking for nearby label text
-    // Google Flow structure: container with "Outputs per prompt" label and dropdown
-    const allElements = document.querySelectorAll('*');
-
-    for (const el of allElements) {
-      const text = (el.textContent || "").toLowerCase();
-
-      // Look for element containing "outputs per prompt" label
-      if (text.includes("outputs per prompt") || text.includes("output per prompt")) {
-        // Find clickable dropdown within or near this element
-        const dropdown = el.querySelector('button, [role="combobox"], [role="listbox"], [aria-haspopup]') ||
-                        el.closest('[role="combobox"]') ||
-                        el.parentElement?.querySelector('button, [role="combobox"], [aria-haspopup]');
-
-        if (dropdown && dropdown.offsetParent !== null) {
-          await clickElement(dropdown);
-          await sleep(500);
-
-          // Look for option matching target count
-          const options = document.querySelectorAll(
-            '[role="option"], [role="menuitem"], [role="listitem"], li, [class*="option"], [class*="menu-item"]'
-          );
-
-          for (const option of options) {
-            const optText = (option.textContent || "").trim();
-            if (optText === String(targetCount)) {
-              await clickElement(option);
-              console.log("Selected output count from 'Outputs per prompt' dropdown:", targetCount);
-              await sleep(300);
-              return true;
-            }
-          }
-        }
-      }
-    }
-
-    // Method 2: Look for any dropdown currently showing a number (1-4) that could be output count
-    const dropdowns = document.querySelectorAll(
-      'button[aria-haspopup], [role="combobox"], [role="listbox"]'
-    );
-
-    for (const dropdown of dropdowns) {
-      const text = (dropdown.textContent || "").trim();
-      const ariaLabel = (dropdown.getAttribute("aria-label") || "").toLowerCase();
-
-      // Check if this dropdown shows a number 1-4 (likely output count)
-      // and has related label nearby
-      const parent = dropdown.closest('div, section, fieldset');
-      const parentText = (parent?.textContent || "").toLowerCase();
-
-      if (
-        (parentText.includes("output") || parentText.includes("per prompt") || ariaLabel.includes("output")) &&
-        /^[1-4]$/.test(text)
-      ) {
-        await clickElement(dropdown);
-        await sleep(500);
-
-        // Look for option matching target count
-        const options = document.querySelectorAll(
-          '[role="option"], [role="menuitem"], li, [class*="option"]'
-        );
-
-        for (const option of options) {
-          const optText = (option.textContent || "").trim();
-          if (optText === String(targetCount)) {
-            await clickElement(option);
-            console.log("Selected output count:", targetCount);
+          if (optText.includes(targetText) && isElementVisible(opt)) {
+            console.log("VeoFlow: MATCH! Clicking:", optText.substring(0, 40));
+            await clickElement(opt);
             await sleep(300);
             return true;
           }
         }
 
-        // Close dropdown if we opened it but didn't find option
+        // Close dropdown if nothing found
+        console.log("VeoFlow: No match found, closing dropdown");
         document.body.click();
         await sleep(200);
+        return true;
       }
     }
 
-    // Method 3: Direct click on visible number options (if Flow shows 1,2,3,4 as buttons)
-    const numberButtons = document.querySelectorAll('button, [role="radio"], [role="tab"]');
-    for (const btn of numberButtons) {
-      const text = (btn.textContent || "").trim();
-      const parent = btn.closest('div, section');
-      const parentText = (parent?.textContent || "").toLowerCase();
+    console.log("VeoFlow: No model button found on page");
+    return true;
+  } catch (e) {
+    console.error("VeoFlow: selectModel error:", e);
+    return true;
+  }
+}
 
-      if (
-        text === String(targetCount) &&
-        (parentText.includes("output") || parentText.includes("per prompt"))
-      ) {
-        if (btn.offsetParent !== null && !btn.disabled) {
-          await clickElement(btn);
-          console.log("Selected output count button:", targetCount);
+// Select aspect ratio - Google Flow uses "16:9" and "9:16"
+async function selectRatio(ratio) {
+  if (!ratio) return true;
+
+  // Map setting value to what Google Flow shows
+  const targetRatio = ratio === "landscape" ? "16:9" : "9:16";
+  const otherRatio = ratio === "landscape" ? "9:16" : "16:9";
+
+  console.log("VeoFlow: Selecting ratio:", targetRatio);
+
+  try {
+    // Find button showing current ratio (contains "16:9" or "9:16")
+    const buttons = document.querySelectorAll('button');
+    for (const btn of buttons) {
+      const text = btn.textContent;
+      if ((text.includes("16:9") || text.includes("9:16")) && isElementVisible(btn)) {
+        // Already correct?
+        if (text.includes(targetRatio)) {
+          console.log("VeoFlow: Ratio already correct:", targetRatio);
+          return true;
+        }
+
+        // Click to open dropdown
+        console.log("VeoFlow: Opening ratio dropdown...");
+        await clickElement(btn);
+        await sleep(400);
+
+        // Find and click target option
+        const options = document.querySelectorAll('[role="option"], [role="menuitem"], div[class*="option"], li');
+        for (const opt of options) {
+          if (opt.textContent.includes(targetRatio) && isElementVisible(opt)) {
+            console.log("VeoFlow: Clicking ratio option:", targetRatio);
+            await clickElement(opt);
+            await sleep(300);
+            return true;
+          }
+        }
+
+        // Fallback: look for any clickable element with the target ratio
+        const allElements = document.querySelectorAll('div, span, button');
+        for (const el of allElements) {
+          const elText = el.textContent.trim();
+          if (elText.includes(targetRatio) && !elText.includes(otherRatio) && isElementVisible(el)) {
+            console.log("VeoFlow: Clicking ratio element (fallback):", elText);
+            await clickElement(el);
+            await sleep(300);
+            return true;
+          }
+        }
+
+        // Close dropdown if nothing found
+        document.body.click();
+        console.log("VeoFlow: Could not find ratio option:", targetRatio);
+        return true;
+      }
+    }
+    console.log("VeoFlow: No ratio button found on page");
+    return true;
+  } catch (e) {
+    console.error("VeoFlow: selectRatio error:", e);
+    return true;
+  }
+}
+
+// Select output count - Target the "Outputs per prompt" combobox in Settings panel
+async function selectOutputCount(count) {
+  const target = parseInt(count) || 1;
+  const targetPlain = `${target}`;
+
+  console.log("VeoFlow: Selecting output count:", target);
+
+  try {
+    // Method 1: Find the "Outputs per prompt" combobox (button) specifically
+    // This is inside the Settings panel and contains "Outputs per prompt" label
+    const allButtons = Array.from(document.querySelectorAll('button[role="combobox"]'));
+    const outputCombobox = allButtons.find(btn => btn.textContent.includes("Outputs per prompt"));
+    
+    if (outputCombobox && isElementVisible(outputCombobox)) {
+      // Check if it already shows the correct value
+      const currentValue = outputCombobox.textContent.match(/\d+/)?.[0];
+      if (currentValue === targetPlain) {
+        console.log("VeoFlow: Output count already correct:", targetPlain);
+        return true;
+      }
+
+      console.log("VeoFlow: Opening 'Outputs per prompt' dropdown...");
+      await clickElement(outputCombobox);
+      await sleep(400);
+
+      // Find the option with exact number match
+      const options = document.querySelectorAll('[role="option"]');
+      for (const opt of options) {
+        const optNum = opt.textContent.trim().match(/^(\d+)$/)?.[1];
+        if (optNum === targetPlain && isElementVisible(opt)) {
+          console.log("VeoFlow: Clicking output option:", optNum);
+          await clickElement(opt);
           await sleep(300);
           return true;
         }
       }
+
+      // Close dropdown if no match
+      document.body.click();
+      console.log("VeoFlow: Could not find output option:", targetPlain);
+      return true;
     }
 
-    console.log("Output count selector not found - Flow may already be set to", targetCount);
-    return false;
+    // Method 2: Fallback - Look for "x2" style indicator on the main bar
+    const allElements = document.querySelectorAll('div, span, button');
+    for (const el of allElements) {
+      const text = el.textContent.trim();
+      if (/^x[1-4]$/.test(text) && isElementVisible(el)) {
+        if (text === `x${target}`) {
+          console.log("VeoFlow: Output count (xN format) already correct:", text);
+          return true;
+        }
+
+        console.log("VeoFlow: Clicking xN indicator:", text);
+        await clickElement(el);
+        await sleep(400);
+
+        // Try to find option
+        const options = document.querySelectorAll('[role="option"]');
+        for (const opt of options) {
+          const optText = opt.textContent.trim();
+          if ((optText === targetPlain || optText === `x${target}`) && isElementVisible(opt)) {
+            console.log("VeoFlow: Clicking output option:", optText);
+            await clickElement(opt);
+            await sleep(300);
+            return true;
+          }
+        }
+
+        document.body.click();
+        return true;
+      }
+    }
+
+    console.log("VeoFlow: No output count element found on page");
+    return true;
   } catch (e) {
-    console.warn("Output count selection failed:", e);
-    return false;
+    console.error("VeoFlow: selectOutputCount error:", e);
+    return true;
+  }
+}
+
+
+// Select creation mode - Google Flow combobox with div[role="option"]
+async function selectCreationMode(mode) {
+  // Map extension mode values to Google Flow's exact dropdown text
+  const modeText = {
+    "text-to-video": "text to video",
+    "frames-to-video": "frames to video",
+    "create-image": "create image",
+    "ingredients": "ingredients to video"
+  };
+
+  const targetText = modeText[mode];
+  if (!targetText) return true;
+
+  console.log("VeoFlow: Selecting creation mode:", targetText);
+
+  try {
+    // Find the combobox
+    const combobox = document.querySelector('[role="combobox"]');
+    if (!combobox) {
+      console.log("VeoFlow: No combobox found on page");
+      return true;
+    }
+
+    // Check if already on correct mode
+    if (combobox.textContent.toLowerCase().includes(targetText)) {
+      console.log("VeoFlow: Mode already correct:", targetText);
+      return true;
+    }
+
+    // Open dropdown
+    console.log("VeoFlow: Opening mode dropdown...");
+    await clickElement(combobox);
+    await sleep(400);
+
+    // Find and click matching option (div[role="option"])
+    const options = document.querySelectorAll('[role="option"]');
+    for (const option of options) {
+      if (option.textContent.toLowerCase().includes(targetText) && isElementVisible(option)) {
+        console.log("VeoFlow: Clicking mode option:", targetText);
+        await clickElement(option);
+        await sleep(300);
+        return true;
+      }
+    }
+
+    // Close if not found
+    document.body.click();
+    console.log("VeoFlow: Could not find mode option:", targetText);
+    return true;
+  } catch (e) {
+    console.error("VeoFlow: selectCreationMode error:", e);
+    return true;
   }
 }
 
@@ -715,129 +718,37 @@ function debugLogAllInputs() {
   console.log("=== End input debug ===");
 }
 
-// Step 5: Enter prompt text
+// Enter prompt - use Google Flow's specific textarea ID
 async function enterPrompt(prompt, clearFirst = false) {
-  console.log("Entering prompt...", clearFirst ? "(clearing first)" : "");
-
-  // Wait for new project dialog/UI to fully render
-  console.log("Waiting for new project dialog to load...");
-
-  // Try multiple times with increasing waits
-  for (let attempt = 1; attempt <= 5; attempt++) {
-    console.log(`Attempt ${attempt}/5 to find prompt input...`);
-    await sleep(2000);
-
-    // DEBUG: Log what we find
-    const textareaCount = document.querySelectorAll("textarea").length;
-    const editableCount = document.querySelectorAll('[contenteditable="true"]').length;
-    const dialogCount = document.querySelectorAll('[role="dialog"], [role="modal"], dialog, [class*="dialog"], [class*="modal"]').length;
-    console.log(`Found: ${textareaCount} textareas, ${editableCount} editables, ${dialogCount} dialogs`);
-
-    // Look inside dialogs/modals first (Google often uses these for new project)
-    const dialogSelectors = [
-      '[role="dialog"]',
-      '[role="modal"]',
-      'dialog',
-      '[class*="dialog"]',
-      '[class*="modal"]',
-      '[class*="overlay"]',
-      '[class*="panel"]'
-    ];
-
-    for (const dialogSelector of dialogSelectors) {
-      const dialogs = document.querySelectorAll(dialogSelector);
-      for (const dialog of dialogs) {
-        if (dialog.offsetParent === null) continue;
-
-        // Look for textarea inside dialog
-        const textarea = dialog.querySelector('textarea');
-        if (textarea && textarea.offsetParent !== null && !textarea.disabled) {
-          console.log("Found textarea inside dialog!");
-          textarea.focus();
-          await sleep(200);
-          await typeText(textarea, prompt, 0, clearFirst);
-          console.log("Prompt pasted in dialog textarea");
-          return true;
-        }
-
-        // Look for contenteditable inside dialog
-        const editable = dialog.querySelector('[contenteditable="true"]');
-        if (editable && editable.offsetParent !== null) {
-          console.log("Found contenteditable inside dialog!");
-          editable.focus();
-          await sleep(200);
-          await typeText(editable, prompt, 0, clearFirst);
-          console.log("Prompt pasted in dialog contenteditable");
-          return true;
-        }
-      }
-    }
-
-    // Try finding textarea anywhere on page
-    const allTextareas = document.querySelectorAll("textarea");
-    for (const ta of allTextareas) {
-      // Check visibility more carefully
-      const rect = ta.getBoundingClientRect();
-      const isVisible = rect.width > 0 && rect.height > 0 && ta.offsetParent !== null;
-
-      if (isVisible && !ta.disabled && !ta.readOnly) {
-        console.log("Found visible textarea:", ta.placeholder || ta.className.substring(0, 30));
-        ta.focus();
-        await sleep(200);
-        await typeText(ta, prompt, 0, clearFirst);
-        console.log("Prompt pasted successfully");
-        return true;
-      }
-    }
-
-    // Try contenteditable elements
-    const allEditables = document.querySelectorAll('[contenteditable="true"]');
-    for (const ed of allEditables) {
-      const rect = ed.getBoundingClientRect();
-      const isVisible = rect.width > 0 && rect.height > 0 && ed.offsetParent !== null;
-
-      if (isVisible) {
-        console.log("Found visible contenteditable");
-        ed.focus();
-        await sleep(200);
-        await typeText(ed, prompt, 0, clearFirst);
-        console.log("Prompt pasted in contenteditable");
-        return true;
-      }
-    }
-
-    // Try role="textbox"
-    const textboxes = document.querySelectorAll('[role="textbox"]');
-    for (const tb of textboxes) {
-      const rect = tb.getBoundingClientRect();
-      const isVisible = rect.width > 0 && rect.height > 0;
-
-      if (isVisible) {
-        console.log("Found visible textbox role");
-        tb.focus();
-        await sleep(200);
-        await typeText(tb, prompt, 0, clearFirst);
-        console.log("Prompt pasted in textbox");
-        return true;
-      }
-    }
-  }
-
-  console.error("Could not find any input field after 5 attempts");
-  console.log("Current page URL:", window.location.href);
-  console.log("Current page title:", document.title);
-  throw new Error("Could not find prompt input field");
-}
-
-// Step 6: Click generate/submit button (the arrow → button, NOT the Expand button)
-async function clickGenerate() {
-  console.log("Looking for generate button (avoiding Expand)...");
-
-  // Wait a moment for button to become enabled
   await sleep(500);
 
+  // Method 1: Use Google Flow's specific textarea ID
+  const textarea = document.querySelector('#PINHOLE_TEXT_AREA_ELEMENT_ID');
+  if (textarea) {
+    textarea.focus();
+    await sleep(100);
+    await typeText(textarea, prompt, 0, clearFirst);
+    return true;
+  }
+
+  // Method 2: Fallback to any visible textarea
+  const fallback = document.querySelector('textarea:not([disabled])');
+  if (fallback) {
+    fallback.focus();
+    await sleep(100);
+    await typeText(fallback, prompt, 0, clearFirst);
+    return true;
+  }
+
+  throw new Error("Could not find prompt input");
+}
+
+// Click generate/submit button
+async function clickGenerate() {
+  await sleep(300);
+
   // IMPORTANT: Buttons to AVOID (these are NOT the generate button)
-  const avoidTexts = ["expand", "edit", "settings", "more", "menu", "copy", "download"];
+  const avoidTexts = ["expand", "edit", "settings", "more", "menu", "copy", "download", "new project"];
 
   // Helper to check if button should be avoided
   const shouldAvoid = (btn) => {
@@ -846,92 +757,61 @@ async function clickGenerate() {
     return avoidTexts.some(avoid => text.includes(avoid) || ariaLabel.includes(avoid));
   };
 
-  // Method 1: Find the submit arrow button (→) in the prompt input area
-  // In Google Flow, this is typically a circular button with an arrow icon near the prompt textarea
-  const promptArea = document.querySelector('[class*="prompt"], [class*="input"], [class*="composer"]');
-  if (promptArea) {
-    const buttonsInPromptArea = promptArea.querySelectorAll('button:not([disabled])');
-    for (const btn of buttonsInPromptArea) {
-      if (shouldAvoid(btn)) continue;
+  const allButtons = Array.from(document.querySelectorAll('button:not([disabled])'));
 
-      // Look for arrow icon button (submit button)
-      const innerHTML = btn.innerHTML || "";
-      const ariaLabel = (btn.getAttribute("aria-label") || "").toLowerCase();
-
-      // Arrow icons often have SVG with arrow path or specific aria-labels
-      if (
-        innerHTML.includes("arrow") ||
-        innerHTML.includes("→") ||
-        innerHTML.includes("send") ||
-        ariaLabel.includes("submit") ||
-        ariaLabel.includes("send") ||
-        ariaLabel.includes("generate") ||
-        btn.querySelector('svg[class*="arrow"], svg[class*="send"]')
-      ) {
-        await clickElement(btn);
-        console.log("Clicked submit arrow button in prompt area");
-        return true;
-      }
-    }
-
-    // Fallback: Look for the last button in prompt area (often the submit button)
-    const visibleButtons = Array.from(buttonsInPromptArea).filter(btn =>
-      btn.offsetParent !== null && !shouldAvoid(btn)
-    );
-    if (visibleButtons.length > 0) {
-      const lastButton = visibleButtons[visibleButtons.length - 1];
-      await clickElement(lastButton);
-      console.log("Clicked last button in prompt area (likely submit)");
-      return true;
-    }
-  }
-
-  // Method 2: Find button with arrow/submit characteristics anywhere on page
-  const allButtons = document.querySelectorAll('button:not([disabled])');
+  // Method 1: Find the button with "arrow_forward" icon AND "Create" text
+  // This is the exact structure of Google Flow's create button
   for (const btn of allButtons) {
-    if (shouldAvoid(btn)) continue;
-    if (btn.offsetParent === null) continue;
+    if (shouldAvoid(btn) || !isElementVisible(btn)) continue;
 
-    const text = (btn.textContent || "").toLowerCase().trim();
-    const ariaLabel = (btn.getAttribute("aria-label") || "").toLowerCase();
     const innerHTML = btn.innerHTML || "";
+    const text = (btn.textContent || "").toLowerCase();
 
-    // Priority 1: Arrow/send buttons
-    if (
-      ariaLabel.includes("submit") ||
-      ariaLabel.includes("send") ||
-      ariaLabel.includes("generate") ||
-      innerHTML.includes("arrow_forward") ||
-      innerHTML.includes("send")
-    ) {
+    // The button has an <i> with arrow_forward and a <span> with "Create"
+    if (innerHTML.includes("arrow_forward") && text.includes("create")) {
+      console.log("VeoFlow: Found 'arrow_forward + Create' button!");
       await clickElement(btn);
-      console.log("Clicked arrow/send button");
-      return true;
-    }
-
-    // Priority 2: Generate/Create buttons (but NOT Expand/Edit)
-    if (
-      (text === "generate" || text === "create" || text === "submit") &&
-      !shouldAvoid(btn)
-    ) {
-      await clickElement(btn);
-      console.log("Clicked generate button:", text);
       return true;
     }
   }
 
-  // Method 3: Look for circular button (FAB style) which is often the submit
-  const circularButtons = document.querySelectorAll('button[class*="fab"], button[class*="round"], button[class*="circle"]');
-  for (const btn of circularButtons) {
-    if (btn.offsetParent !== null && !btn.disabled && !shouldAvoid(btn)) {
+  // Method 2: Find button where textContent is exactly "arrow_forwardCreate" (icon + hidden text)
+  for (const btn of allButtons) {
+    if (shouldAvoid(btn) || !isElementVisible(btn)) continue;
+    const rawText = (btn.textContent || "").trim();
+    if (rawText === "arrow_forwardCreate") {
+      console.log("VeoFlow: Found button with textContent 'arrow_forwardCreate'");
       await clickElement(btn);
-      console.log("Clicked circular FAB button");
+      return true;
+    }
+  }
+
+  // Method 3: Look for any button with just "Create" as text (fallback)
+  for (const btn of allButtons) {
+    if (shouldAvoid(btn) || !isElementVisible(btn)) continue;
+    const text = (btn.textContent || "").toLowerCase().trim();
+    // Only match if text is exactly "create" or "generate" (short text, primary action)
+    if (text === "create" || text === "generate") {
+      console.log("VeoFlow: Found button with text:", text);
+      await clickElement(btn);
+      return true;
+    }
+  }
+  
+  // Method 4: Fallback to arrow_forward icon button anywhere
+  for (const btn of allButtons) {
+    if (shouldAvoid(btn) || !isElementVisible(btn)) continue;
+    const innerHTML = btn.innerHTML || "";
+    if (innerHTML.includes("arrow_forward")) {
+      console.log("VeoFlow: Found arrow_forward button");
+      await clickElement(btn);
       return true;
     }
   }
 
   throw new Error("Could not find generate button (made sure to avoid Expand)");
 }
+
 
 // Check video generation status
 function checkVideoStatus() {
@@ -1049,17 +929,23 @@ async function downloadVideo(folder) {
       let index = 1;
       for (const url of videoUrls) {
         // Send to background for proper download with folder
+        // Format: FolderName/video_1_timestamp.mp4
+        const folderName = folder || "VeoFlow";
+        const fileName = `${folderName}/video_${index}_${Date.now()}.mp4`;
+        console.log("VeoFlow: Downloading to:", fileName);
+        
         chrome.runtime.sendMessage({
           type: 'DOWNLOAD_URL',
           data: {
             url: url,
-            filename: `${folder || "VeoFlow"}/${folder || "video"}_${index}_${Date.now()}.mp4`
+            filename: fileName
           }
         });
         downloadedCount++;
         index++;
         await sleep(500);
       }
+
       console.log("Sent", downloadedCount, "videos to background for download");
       return { success: true, count: downloadedCount };
     }
@@ -1132,88 +1018,115 @@ async function uploadImage(imageData) {
   }
 }
 
-// Main task execution
-async function executeTask(task, settings) {
-  if (isAutomating) {
-    return { success: false, error: "Already automating" };
+// Apply settings ONCE at the start of queue processing
+// Called once before processing tasks, NOT for every task
+async function applySettings(mode, settings) {
+  console.log("VeoFlow: ===== APPLYING SETTINGS (ONCE) =====");
+  console.log("VeoFlow: Mode:", mode);
+  console.log("VeoFlow: Settings:", settings);
+
+  const isImageMode = mode === 'create-image';
+
+  // Validate model for current mode
+  const VALID_VIDEO_MODELS = ["veo-3.1-fast", "veo-3.1-quality", "veo-2-fast", "veo-2-quality"];
+  const VALID_IMAGE_MODELS = ["imagen-4", "nano-banana", "nano-banana-pro"];
+
+  let resolvedModel = settings.model;
+  if (isImageMode && !VALID_IMAGE_MODELS.includes(resolvedModel)) {
+    resolvedModel = "nano-banana-pro";
+  } else if (!isImageMode && !VALID_VIDEO_MODELS.includes(resolvedModel)) {
+    resolvedModel = "veo-3.1-fast";
   }
 
-  isAutomating = true;
-  console.log("Executing task:", task.prompt?.substring(0, 50));
-
   try {
-    // Step 1: Select model (we don't click start project here - it's done once at queue start)
-    if (settings.model) {
-      await selectModel(settings.model);
-      await sleep(500);
-    }
+    // 1. Select creation mode
+    await selectCreationMode(mode);
+    await sleep(800);
 
-    // Step 2: Select ratio (16:9 or 9:16)
-    if (settings.ratio) {
-      await selectRatio(settings.ratio);
-      await sleep(500);
-    }
+    // 2. Apply model
+    await selectModel(resolvedModel, isImageMode);
 
-    // Step 3: Select output count (1-4 videos) - CRITICAL to avoid token burn!
-    // This ensures only 1 video per prompt when user selects "1" in settings
-    const outputCount = settings.videosPerTask || '1';
-    await selectOutputCount(outputCount);
+    // 3. Apply ratio
+    await selectRatio(settings.ratio || 'landscape');
+
+    // 4. Apply output count
+    await selectOutputCount(settings.outputCount || '1');
+
+    // 5. Close any open dropdowns/popups
+    console.log("VeoFlow: Closing popups...");
+    document.body.click();
     await sleep(300);
 
-    // Step 4: Handle image-to-video
-    if (task.type === "image-to-video" && task.image) {
-      await uploadImage(task.image);
-      await sleep(1000);
-    }
-
-    // Step 5: Enter prompt (pastes full prompt INSTANTLY - no character animation)
-    if (task.prompt) {
-      // Clear any existing prompt first (for bulk videos in same project)
-      await enterPrompt(task.prompt, true); // Pass true to clear first
-      await sleep(300);
-    }
-
-    // Step 6: Click generate
-    await clickGenerate();
-
-    isAutomating = false;
+    console.log("VeoFlow: ===== SETTINGS APPLIED =====");
     return { success: true };
   } catch (error) {
-    isAutomating = false;
+    console.error("VeoFlow: applySettings error:", error);
+    return { success: false, error: error.message };
+  }
+}
+
+// Execute a single task - ONLY enters prompt and generates
+// Settings are already applied once at the start
+async function executeTask(task, settings) {
+  console.log("VeoFlow: Executing prompt:", task.prompt?.substring(0, 40));
+
+  try {
+    // Upload image if provided (for frames-to-video mode)
+    if (task.image) {
+      await uploadImage(task.image);
+    }
+
+    // Enter prompt and generate
+    await enterPrompt(task.prompt, true);
+    await clickGenerate();
+
+    window.__VEOFLOW_IS_AUTOMATING__ = false;
+    return { success: true };
+  } catch (error) {
+    window.__VEOFLOW_IS_AUTOMATING__ = false;
     console.error("Task execution failed:", error);
     return { success: false, error: error.message };
   }
 }
 
-// Only register message handler ONCE (prevent duplicate listeners from multiple injections)
-if (!window.__VEOFLOW_LISTENER_REGISTERED__) {
-  window.__VEOFLOW_LISTENER_REGISTERED__ = true;
+// Only register message handler ONCE
+if (!window.__VEOFLOW_LISTENER__) {
+  window.__VEOFLOW_LISTENER__ = true;
 
-  // Message handler
   chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-    console.log("Content script received message:", message.type);
-
     switch (message.type) {
+      case "APPLY_SETTINGS":
+        // Apply settings ONCE at the start of queue
+        console.log("VeoFlow: Received APPLY_SETTINGS");
+        applySettings(message.data.mode, message.data.settings)
+          .then(sendResponse)
+          .catch((e) => sendResponse({ success: false, error: e.message }));
+        return true;
+
       case "EXECUTE_TASK":
-        // CRITICAL: Check if this exact task was already processed to prevent double execution
         const taskId = message.data.task?.id;
-        if (taskId && processedTaskIds.has(taskId)) {
-          console.log("VeoFlow: Task already processed, skipping duplicate:", taskId);
-          sendResponse({ success: true, skipped: true, message: "Already processed" });
+
+        // Skip if already processed this exact task (duplicate prevention)
+        if (taskId && window.__VEOFLOW_PROCESSED_TASKS__.has(taskId)) {
+          console.log("VeoFlow: Skipping duplicate task", taskId);
+          sendResponse({ success: true, skipped: true });
           return true;
         }
 
-        // Mark task as being processed
+        // Mark task as processed IMMEDIATELY
         if (taskId) {
-          processedTaskIds.add(taskId);
-          // Clean up old task IDs after 5 minutes to prevent memory leak
-          setTimeout(() => processedTaskIds.delete(taskId), 5 * 60 * 1000);
+          window.__VEOFLOW_PROCESSED_TASKS__.add(taskId);
+          // Clean up after 5 minutes
+          setTimeout(() => window.__VEOFLOW_PROCESSED_TASKS__.delete(taskId), 300000);
         }
+
+        // Set automating flag
+        window.__VEOFLOW_IS_AUTOMATING__ = true;
 
         executeTask(message.data.task, message.data.settings)
           .then(sendResponse)
           .catch((e) => sendResponse({ success: false, error: e.message }));
-        return true; // Keep channel open for async
+        return true;
 
       case "CHECK_VIDEO_STATUS":
         sendResponse(checkVideoStatus());
@@ -1226,23 +1139,9 @@ if (!window.__VEOFLOW_LISTENER_REGISTERED__) {
         return true;
 
       case "CLICK_START_PROJECT":
-        // Prevent multiple clicks - use a flag
-        if (window.__VEOFLOW_CLICKING_START__) {
-          console.log("VeoFlow: Already clicking start project, skipping");
-          sendResponse({ success: true, skipped: true });
-          return true;
-        }
-        window.__VEOFLOW_CLICKING_START__ = true;
-
         clickStartProject()
-          .then((result) => {
-            window.__VEOFLOW_CLICKING_START__ = false;
-            sendResponse({ success: result });
-          })
-          .catch((e) => {
-            window.__VEOFLOW_CLICKING_START__ = false;
-            sendResponse({ success: false, error: e.message });
-          });
+          .then((result) => sendResponse({ success: result }))
+          .catch((e) => sendResponse({ success: false, error: e.message }));
         return true;
 
       case "PING":

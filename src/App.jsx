@@ -59,15 +59,13 @@ const FLOW_URLS = [
 
 // Default settings
 const DEFAULT_SETTINGS = {
-  videosPerTask: '1',
+  creationMode: 'text-to-video',
   model: 'veo-3.1-fast',
   ratio: 'landscape',
-  startFrom: 1,
-  waitTimeMin: 30,
-  waitTimeMax: 60,
+  outputCount: '1',
   language: 'en',
-  autoDownload: true,
-  downloadFolder: 'VeoFlow-Videos'
+  autoDownload: false,
+  downloadFolder: 'VeoFlow'
 }
 
 function App() {
@@ -83,23 +81,53 @@ function App() {
 
   // Check if current tab is on Google Flow
   useEffect(() => {
+    const checkFlowPage = () => {
+      if (typeof chrome !== 'undefined' && chrome.tabs) {
+        chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+          if (tabs[0] && tabs[0].url) {
+            const url = tabs[0].url
+            setCurrentTabUrl(url)
+            const onFlow = FLOW_URLS.some(flowUrl => url.includes(flowUrl))
+            setIsOnFlowPage(onFlow)
+          }
+        })
+      }
+    }
+
+    // Check immediately
+    checkFlowPage()
+
+    // Also listen for tab updates (URL changes, navigation)
     if (typeof chrome !== 'undefined' && chrome.tabs) {
-      chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
-        if (tabs[0] && tabs[0].url) {
-          const url = tabs[0].url
-          setCurrentTabUrl(url)
-          const onFlow = FLOW_URLS.some(flowUrl => url.includes(flowUrl))
-          setIsOnFlowPage(onFlow)
+      const handleTabUpdate = (tabId, changeInfo, tab) => {
+        if (changeInfo.url || changeInfo.status === 'complete') {
+          checkFlowPage()
         }
-      })
+      }
+      
+      const handleTabActivated = () => {
+        checkFlowPage()
+      }
+
+      chrome.tabs.onUpdated.addListener(handleTabUpdate)
+      chrome.tabs.onActivated.addListener(handleTabActivated)
+
+      return () => {
+        chrome.tabs.onUpdated.removeListener(handleTabUpdate)
+        chrome.tabs.onActivated.removeListener(handleTabActivated)
+      }
     }
   }, [])
+
 
   // Load settings from storage on mount
   useEffect(() => {
     if (typeof chrome !== 'undefined' && chrome.storage) {
-      chrome.storage.local.get(['settings', 'queue', 'logs', 'failedTasks', 'isRunning'], (result) => {
-        if (result.settings) setSettings(result.settings)
+      chrome.storage.local.get(['queue', 'logs', 'failedTasks', 'isRunning'], (result) => {
+        // NOTE: We intentionally DO NOT load 'settings' from storage anymore.
+        // User requested to ALWAYS start with defaults (Nano Banana, Landscape, etc.) on reload.
+        // if (result.settings) setSettings(result.settings)
+        
         if (result.queue) setQueue(result.queue)
         if (result.logs) setLogs(result.logs)
         if (result.failedTasks) setFailedTasks(result.failedTasks)
@@ -108,7 +136,8 @@ function App() {
     }
   }, [])
 
-  // Save settings to storage
+  // Save settings to storage (still save them in case we want to restore history/logs context, 
+  // but we won't load them on init for the main controls)
   useEffect(() => {
     if (typeof chrome !== 'undefined' && chrome.storage) {
       chrome.storage.local.set({ settings })
@@ -270,9 +299,6 @@ function App() {
             isRunning={isRunning}
             progress={progress}
             settings={settings}
-            updateSettings={updateSettings}
-            isOnFlowPage={isOnFlowPage}
-            goToFlow={goToFlow}
           />
         )
       case 'settings':

@@ -396,7 +396,26 @@ async function processQueue() {
     }
   } catch (error) {
     log('warning', 'Failed to click start project button: ' + error.message + ' (continuing anyway)')
-    // Continue even if this fails - might already be in create mode
+  }
+
+  // Step 3.6: Apply settings ONCE at the beginning (mode, model, ratio, output count)
+  try {
+    const firstTask = state.queue[0]
+    log('info', 'Applying settings once: ' + (firstTask?.type || 'text-to-video'))
+    const settingsResponse = await chrome.tabs.sendMessage(state.activeTabId, {
+      type: 'APPLY_SETTINGS',
+      data: {
+        mode: firstTask?.type || state.settings.creationMode || 'text-to-video',
+        settings: state.settings
+      }
+    })
+    if (settingsResponse && settingsResponse.success) {
+      log('success', 'Settings applied')
+    } else {
+      log('warning', 'Settings may not have been applied: ' + (settingsResponse?.error || 'unknown'))
+    }
+  } catch (error) {
+    log('warning', 'Failed to apply settings: ' + error.message)
   }
 
   // Step 4: Process each task
@@ -417,47 +436,65 @@ async function processQueue() {
     updateProgress(taskNum, state.queue.length, `Task ${taskNum}/${state.queue.length}`)
     log('info', `--- Task ${taskNum}/${state.queue.length} ---`)
 
+    // Mark task as in-progress and update UI
+    task.status = 'processing'
+    chrome.storage.local.set({ queue: state.queue })
+    chrome.runtime.sendMessage({ type: 'QUEUE_UPDATE', data: state.queue }).catch(() => {})
+
     try {
       // Execute the task (enters prompt, clicks generate, etc.)
       // All tasks run in the SAME project - no new project click between tasks
       await executeTask(task, state.settings)
+      log('info', `Task ${taskNum} prompt submitted`)
 
-      // Wait for video to be partially complete (for bulk videos in same project)
-      // Only wait for full completion on the last task
       const isLastTask = (i === tasksToProcess.length - 1)
-      await waitForVideoPartialCompletion(state.settings, isLastTask)
+      const isImageTask = task.type === 'create-image'
 
-      // Download if enabled (only for completed videos, so mainly for last task)
-      if (isLastTask) {
-        await downloadVideo(state.settings, task)
+      if (isImageTask) {
+        // IMAGES: Fast mode - mark complete quickly
+        await sleep(800) // Just enough for generate to register
+        task.status = 'completed'
+      } else {
+        // VIDEOS: Wait for completion before marking as done
+        await waitForVideoPartialCompletion(state.settings, isLastTask)
+        task.status = 'completed'
+
+        // Download video if enabled
+        if (state.settings.autoDownload) {
+          await downloadVideo(state.settings, task)
+        }
+
+        // Short delay before entering next prompt
+        if (!isLastTask) {
+          const delay = getRandomDelay(1000, 2000)
+          log('info', `Waiting ${Math.round(delay/1000)}s before next video prompt...`)
+          await sleep(delay)
+        }
       }
 
-      // Mark task completed
-      task.status = 'completed'
-      log('success', `Task ${taskNum} prompt submitted in same project`)
-
-      // Short delay before entering next prompt (all in same project)
-      if (i < tasksToProcess.length - 1) {
-        const delay = getRandomDelay(1000, 2000)
-        log('info', `Waiting ${Math.round(delay/1000)}s before entering next prompt in same project...`)
-        await sleep(delay)
-      }
+      // Update UI with completed status
+      log('success', `Task ${taskNum} completed`)
+      chrome.storage.local.set({ queue: state.queue })
+      chrome.runtime.sendMessage({ type: 'QUEUE_UPDATE', data: state.queue }).catch(() => {})
 
     } catch (error) {
       log('error', `Task ${taskNum} failed: ${error.message}`)
       task.status = 'failed'
       task.error = error.message
 
-      // Report failed task
+      // Report failed task and update UI
       chrome.runtime.sendMessage({
         type: 'TASK_FAILED',
         data: task
       }).catch(() => {})
+      chrome.storage.local.set({ queue: state.queue })
+      chrome.runtime.sendMessage({ type: 'QUEUE_UPDATE', data: state.queue }).catch(() => {})
 
       // Continue with next task after a short delay
       await sleep(2000)
     }
   }
+
 
   // Done
   state.isRunning = false

@@ -6,18 +6,39 @@ const FolderIcon = () => (
   </svg>
 )
 
-const MODELS = [
-  { value: 'veo-3.1-fast', label: 'Default (Veo 3.1 - Fast)' },
-  { value: 'veo-3.1-low-priority', label: 'Veo 3.1 - Low Priority' },
+// Creation modes
+const CREATION_MODES = [
+  { value: 'text-to-video', label: 'Text to Video' },
+  { value: 'frames-to-video', label: 'Frames to Video' },
+  { value: 'create-image', label: 'Create Image' },
+  { value: 'ingredients', label: 'Ingredients to Video' },
+]
+
+// Video models (for Text to Video, Frames to Video, Ingredients)
+const VIDEO_MODELS = [
+  { value: 'veo-3.1-fast', label: 'Veo 3.1 - Fast' },
   { value: 'veo-3.1-quality', label: 'Veo 3.1 - Quality' },
-  { value: 'veo-2.0', label: 'Veo 2.0' },
+  { value: 'veo-2-fast', label: 'Veo 2 - Fast' },
+  { value: 'veo-2-quality', label: 'Veo 2 - Quality' },
 ]
 
+// Image models (for Create Image)
+const IMAGE_MODELS = [
+  { value: 'imagen-4', label: 'Imagen 4' },
+  { value: 'nano-banana', label: 'Nano Banana' },
+  { value: 'nano-banana-pro', label: 'Nano Banana Pro' },
+]
+
+// Ratios
 const RATIOS = [
-  { value: 'landscape', label: 'Landscape (16:9)' },
-  { value: 'portrait', label: 'Portrait (9:16)' },
+  { value: 'landscape', label: '16:9 (Landscape)' },
+  { value: 'portrait', label: '9:16 (Portrait)' },
 ]
 
+// Output counts
+const OUTPUT_COUNTS = ['1', '2', '3', '4']
+
+// Languages
 const LANGUAGES = [
   { value: 'en', label: 'English' },
   { value: 'vi', label: 'Vietnamese' },
@@ -29,47 +50,67 @@ const LANGUAGES = [
   { value: 'zh', label: 'Chinese' },
 ]
 
-const VIDEOS_PER_TASK = ['1', '2', '3', '4']
-
 function SettingsTab({ settings, updateSettings }) {
+  const isVideoMode = settings.creationMode !== 'create-image'
+  const models = isVideoMode ? VIDEO_MODELS : IMAGE_MODELS
+  const outputLabel = isVideoMode ? 'Videos per prompt:' : 'Images per prompt:'
+
   const handleConfigureFolder = () => {
-    // Open folder picker or show instructions
     if (typeof chrome !== 'undefined' && chrome.downloads) {
       chrome.downloads.showDefaultFolder()
     }
   }
 
+  // When mode changes, reset model to correct default for that mode
+  const handleModeChange = (newMode) => {
+    updateSettings('creationMode', newMode)
+    // Reset model to correct default for the new mode
+    // CRITICAL: Use veo-3.1-fast (20 credits) as default, NOT veo-2-quality (100 credits)
+    if (newMode === 'create-image') {
+      updateSettings('model', 'nano-banana-pro')  // Default image model
+    } else {
+      updateSettings('model', 'veo-3.1-fast')     // Default video model (20 credits)
+    }
+  }
+
+
   return (
     <div className="space-y-6">
-      {/* General Settings */}
+      {/* Creation Mode */}
       <div className="space-y-4">
         <h2 className="text-sm font-semibold text-primary border-b border-dark-border pb-2">
-          General Settings
+          Creation Mode
         </h2>
 
-        {/* Videos per task */}
         <div className="flex items-center justify-between">
-          <label className="text-sm text-text-secondary">Videos per task:</label>
+          <label className="text-sm text-text-secondary">Mode:</label>
           <select
-            value={settings.videosPerTask}
-            onChange={(e) => updateSettings('videosPerTask', e.target.value)}
+            value={settings.creationMode || 'text-to-video'}
+            onChange={(e) => handleModeChange(e.target.value)}
             className="w-48"
           >
-            {VIDEOS_PER_TASK.map(num => (
-              <option key={num} value={num}>{num}</option>
+            {CREATION_MODES.map(mode => (
+              <option key={mode.value} value={mode.value}>{mode.label}</option>
             ))}
           </select>
         </div>
+      </div>
+
+      {/* Mode-specific Settings */}
+      <div className="space-y-4">
+        <h2 className="text-sm font-semibold text-primary border-b border-dark-border pb-2">
+          {isVideoMode ? 'Video Settings' : 'Image Settings'}
+        </h2>
 
         {/* Model */}
         <div className="flex items-center justify-between">
-          <label className="text-sm text-text-secondary">Model (Optional):</label>
+          <label className="text-sm text-text-secondary">Model:</label>
           <select
-            value={settings.model}
+            value={settings.model || models[0].value}
             onChange={(e) => updateSettings('model', e.target.value)}
             className="w-48"
           >
-            {MODELS.map(model => (
+            {models.map(model => (
               <option key={model.value} value={model.value}>{model.label}</option>
             ))}
           </select>
@@ -77,9 +118,9 @@ function SettingsTab({ settings, updateSettings }) {
 
         {/* Ratio */}
         <div className="flex items-center justify-between">
-          <label className="text-sm text-text-secondary">Ratio (T2V & I2V Crop):</label>
+          <label className="text-sm text-text-secondary">Aspect Ratio:</label>
           <select
-            value={settings.ratio}
+            value={settings.ratio || 'landscape'}
             onChange={(e) => updateSettings('ratio', e.target.value)}
             className="w-48"
           >
@@ -89,50 +130,32 @@ function SettingsTab({ settings, updateSettings }) {
           </select>
         </div>
 
-        {/* Start from */}
+        {/* Output count */}
         <div className="flex items-center justify-between">
-          <label className="text-sm text-text-secondary">Start from (Prompt/Image):</label>
-          <div className="flex items-center gap-2">
-            <input
-              type="number"
-              min="1"
-              value={settings.startFrom}
-              onChange={(e) => updateSettings('startFrom', parseInt(e.target.value) || 1)}
-              className="w-20 text-center"
-            />
-            <span className="text-text-muted">#</span>
-          </div>
+          <label className="text-sm text-text-secondary">{outputLabel}</label>
+          <select
+            value={settings.outputCount || '1'}
+            onChange={(e) => updateSettings('outputCount', e.target.value)}
+            className="w-48"
+          >
+            {OUTPUT_COUNTS.map(num => (
+              <option key={num} value={num}>{num}</option>
+            ))}
+          </select>
         </div>
+      </div>
 
-        {/* Video creation wait time */}
-        <div className="flex items-center justify-between">
-          <label className="text-sm text-text-secondary">Video creation wait time (sec):</label>
-          <div className="flex items-center gap-2">
-            <input
-              type="number"
-              min="10"
-              max="300"
-              value={settings.waitTimeMin}
-              onChange={(e) => updateSettings('waitTimeMin', parseInt(e.target.value) || 30)}
-              className="w-16 text-center"
-            />
-            <span className="text-text-muted">to</span>
-            <input
-              type="number"
-              min="10"
-              max="300"
-              value={settings.waitTimeMax}
-              onChange={(e) => updateSettings('waitTimeMax', parseInt(e.target.value) || 60)}
-              className="w-16 text-center"
-            />
-          </div>
-        </div>
+      {/* General Settings */}
+      <div className="space-y-4">
+        <h2 className="text-sm font-semibold text-primary border-b border-dark-border pb-2">
+          General Settings
+        </h2>
 
         {/* Language */}
         <div className="flex items-center justify-between">
           <label className="text-sm text-text-secondary">Language:</label>
           <select
-            value={settings.language}
+            value={settings.language || 'en'}
             onChange={(e) => updateSettings('language', e.target.value)}
             className="w-48"
           >
@@ -141,17 +164,10 @@ function SettingsTab({ settings, updateSettings }) {
             ))}
           </select>
         </div>
-      </div>
 
-      {/* Download Settings */}
-      <div className="space-y-4">
-        <h2 className="text-sm font-semibold text-primary border-b border-dark-border pb-2">
-          Download Settings
-        </h2>
-
-        {/* Auto-download videos */}
+        {/* Auto-download */}
         <div className="flex items-center justify-between">
-          <label className="text-sm text-text-secondary">Auto-download videos:</label>
+          <label className="text-sm text-text-secondary">Auto-download:</label>
           <button
             onClick={() => updateSettings('autoDownload', !settings.autoDownload)}
             className={`toggle ${settings.autoDownload ? 'toggle-enabled' : 'toggle-disabled'}`}
@@ -163,65 +179,27 @@ function SettingsTab({ settings, updateSettings }) {
         </div>
 
         {/* Download folder name */}
-        <div className="flex items-center justify-between">
-          <label className="text-sm text-text-secondary">Download folder:</label>
-          <div className="flex items-center gap-2">
-            <input
-              type="text"
-              value={settings.downloadFolder || 'VeoFlow-Videos'}
-              onChange={(e) => updateSettings('downloadFolder', e.target.value)}
-              placeholder="VeoFlow-Videos"
-              className="w-36 text-sm"
-            />
-            <button
-              onClick={handleConfigureFolder}
-              className="p-1.5 bg-dark-surface hover:bg-dark-hover rounded transition-colors"
-              title="Open Downloads folder"
-            >
-              <FolderIcon />
-            </button>
+        {settings.autoDownload && (
+          <div className="flex items-center justify-between">
+            <label className="text-sm text-text-secondary">Download folder:</label>
+            <div className="flex items-center gap-2">
+              <input
+                type="text"
+                value={settings.downloadFolder || 'VeoFlow'}
+                onChange={(e) => updateSettings('downloadFolder', e.target.value)}
+                placeholder="VeoFlow"
+                className="w-36 text-sm"
+              />
+              <button
+                onClick={handleConfigureFolder}
+                className="p-1.5 bg-dark-surface hover:bg-dark-hover rounded transition-colors"
+                title="Open Downloads folder"
+              >
+                <FolderIcon />
+              </button>
+            </div>
           </div>
-        </div>
-
-        <p className="text-xs text-text-muted italic">
-          Videos save to: Downloads/{settings.downloadFolder || 'VeoFlow-Videos'}/
-        </p>
-        <p className="text-xs text-text-muted italic">
-          Tip: Turn off 'Ask where to save...' in your browser's download settings for seamless auto-downloading.
-        </p>
-      </div>
-
-      {/* Advanced Settings */}
-      <div className="space-y-4">
-        <h2 className="text-sm font-semibold text-primary border-b border-dark-border pb-2">
-          Advanced Settings
-        </h2>
-
-        {/* Retry on failure */}
-        <div className="flex items-center justify-between">
-          <label className="text-sm text-text-secondary">Retry failed tasks:</label>
-          <button
-            onClick={() => updateSettings('retryOnFailure', !settings.retryOnFailure)}
-            className={`toggle ${settings.retryOnFailure ? 'toggle-enabled' : 'toggle-disabled'}`}
-          >
-            <span
-              className={`toggle-knob ${settings.retryOnFailure ? 'translate-x-5' : 'translate-x-1'}`}
-            />
-          </button>
-        </div>
-
-        {/* Human-like delays */}
-        <div className="flex items-center justify-between">
-          <label className="text-sm text-text-secondary">Human-like delays:</label>
-          <button
-            onClick={() => updateSettings('humanLikeDelays', !settings.humanLikeDelays)}
-            className={`toggle ${settings.humanLikeDelays !== false ? 'toggle-enabled' : 'toggle-disabled'}`}
-          >
-            <span
-              className={`toggle-knob ${settings.humanLikeDelays !== false ? 'translate-x-5' : 'translate-x-1'}`}
-            />
-          </button>
-        </div>
+        )}
       </div>
     </div>
   )

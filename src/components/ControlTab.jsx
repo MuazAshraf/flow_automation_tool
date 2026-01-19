@@ -54,14 +54,6 @@ const StopIcon = () => (
   </svg>
 )
 
-const ExternalLinkIcon = () => (
-  <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/>
-    <polyline points="15 3 21 3 21 9"/>
-    <line x1="10" y1="14" x2="21" y2="3"/>
-  </svg>
-)
-
 const XIcon = () => (
   <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
     <line x1="18" y1="6" x2="6" y2="18"/>
@@ -81,8 +73,15 @@ const ChevronUpIcon = () => (
   </svg>
 )
 
-function ControlTab({ queue, addToQueue, removeFromQueue, clearQueue, clearCompletedFromQueue, startQueue, stopQueue, isRunning, progress, settings, updateSettings, isOnFlowPage, goToFlow }) {
-  const [creationMode, setCreationMode] = useState('text-to-video')
+// Mode labels for display
+const MODE_LABELS = {
+  'text-to-video': 'Text to Video',
+  'frames-to-video': 'Frames to Video',
+  'create-image': 'Create Image',
+  'ingredients': 'Ingredients'
+}
+
+function ControlTab({ queue, addToQueue, removeFromQueue, clearQueue, clearCompletedFromQueue, startQueue, stopQueue, isRunning, progress, settings }) {
   const [promptText, setPromptText] = useState('')
   const [selectedImages, setSelectedImages] = useState([])
   const [imageSortOrder, setImageSortOrder] = useState('A-Z')
@@ -90,13 +89,9 @@ function ControlTab({ queue, addToQueue, removeFromQueue, clearQueue, clearCompl
   const fileInputRef = useRef(null)
   const imageInputRef = useRef(null)
 
-  // Use settings.downloadFolder directly (synced with Settings tab)
-  const downloadFolder = settings.downloadFolder || 'VeoFlow-Videos'
-  const setDownloadFolder = (value) => {
-    if (updateSettings) {
-      updateSettings('downloadFolder', value)
-    }
-  }
+  // Get current mode from settings
+  const creationMode = settings.creationMode || 'text-to-video'
+  const isFramesMode = creationMode === 'frames-to-video'
 
   const handleImportFile = (e) => {
     const file = e.target.files?.[0]
@@ -127,7 +122,7 @@ function ControlTab({ queue, addToQueue, removeFromQueue, clearQueue, clearCompl
   }
 
   const parsePrompts = (text) => {
-    // Split by double newlines or numbered patterns
+    // Split by double newlines
     const prompts = text
       .split(/\n\n+/)
       .map(p => p.trim())
@@ -136,29 +131,30 @@ function ControlTab({ queue, addToQueue, removeFromQueue, clearQueue, clearCompl
     return prompts.map(prompt => ({
       type: creationMode,
       prompt,
-      folder: downloadFolder
+      folder: settings.downloadFolder || 'VeoFlow'
     }))
   }
 
   const handleAddToQueue = () => {
-    if (creationMode === 'text-to-video') {
-      const items = parsePrompts(promptText)
-      if (items.length > 0) {
-        addToQueue(items)
-        setPromptText('')
-      }
-    } else {
-      // Image-to-video mode
+    if (isFramesMode) {
+      // Frames mode requires source images
       const prompts = parsePrompts(promptText)
       const items = selectedImages.map((img, idx) => ({
-        type: 'image-to-video',
+        type: creationMode,
         prompt: prompts[idx]?.prompt || '',
         image: img,
-        folder: downloadFolder
+        folder: settings.downloadFolder || 'VeoFlow'
       }))
       if (items.length > 0) {
         addToQueue(items)
         setSelectedImages([])
+        setPromptText('')
+      }
+    } else {
+      // Text-to-Video, Create Image, Ingredients - prompts only
+      const items = parsePrompts(promptText)
+      if (items.length > 0) {
+        addToQueue(items)
         setPromptText('')
       }
     }
@@ -168,26 +164,24 @@ function ControlTab({ queue, addToQueue, removeFromQueue, clearQueue, clearCompl
     ? Math.round((progress.current / progress.total) * 100)
     : 0
 
-  // Handle start queue - opens Flow if needed
   const handleStartQueue = () => {
     if (queue.length === 0) return
-    // Start queue will open Flow automatically via background script
     startQueue()
   }
 
   return (
     <div className="space-y-4">
-      {/* Creation Mode */}
-      <div className="space-y-2">
-        <label className="text-sm font-medium text-primary">Creation Mode</label>
-        <select
-          value={creationMode}
-          onChange={(e) => setCreationMode(e.target.value)}
-          className="w-full"
-        >
-          <option value="text-to-video">Text-to-Video</option>
-          <option value="image-to-video">Image-to-Video</option>
-        </select>
+      {/* Current Mode Display */}
+      <div className="px-3 py-2 bg-dark-surface rounded-lg border border-dark-border">
+        <div className="flex items-center justify-between">
+          <span className="text-sm text-text-muted">Current Mode:</span>
+          <span className="text-sm font-medium text-accent-teal">
+            {MODE_LABELS[creationMode] || creationMode}
+          </span>
+        </div>
+        <p className="text-xs text-text-muted mt-1">
+          Change mode in Settings tab
+        </p>
       </div>
 
       {/* Prompt List */}
@@ -195,14 +189,13 @@ function ControlTab({ queue, addToQueue, removeFromQueue, clearQueue, clearCompl
         <div className="flex items-center justify-between">
           <label className="text-sm font-medium text-primary">
             Prompt List
-            <span className="text-text-muted text-xs ml-2">(Sample .txt file)</span>
           </label>
           <button
             onClick={() => fileInputRef.current?.click()}
             className="btn btn-secondary text-xs py-1 px-3"
           >
             <UploadIcon />
-            Import file (.txt)
+            Import .txt
           </button>
           <input
             ref={fileInputRef}
@@ -214,10 +207,10 @@ function ControlTab({ queue, addToQueue, removeFromQueue, clearQueue, clearCompl
         </div>
       </div>
 
-      {/* Image List (only for image-to-video) */}
-      {creationMode === 'image-to-video' && (
+      {/* Image List (only for frames-to-video) */}
+      {isFramesMode && (
         <div className="space-y-2">
-          <label className="text-sm font-medium text-primary">Image List</label>
+          <label className="text-sm font-medium text-primary">Source Images</label>
           <div className="flex gap-2">
             <button
               onClick={() => imageInputRef.current?.click()}
@@ -255,21 +248,9 @@ function ControlTab({ queue, addToQueue, removeFromQueue, clearQueue, clearCompl
       <textarea
         value={promptText}
         onChange={(e) => setPromptText(e.target.value)}
-        placeholder={`First prompt.\nCan span multiple lines or be a JSON prompt.\n\nSecond prompt starts after a blank line.\n\nThird prompt is similar...`}
+        placeholder={`First prompt.\nCan span multiple lines.\n\nSecond prompt starts after blank line.\n\nThird prompt...`}
         className="w-full h-32 resize-none text-sm"
       />
-
-      {/* Job Download Folder */}
-      <div className="space-y-2">
-        <label className="text-sm font-medium text-primary">Job Download Folder:</label>
-        <input
-          type="text"
-          value={downloadFolder}
-          onChange={(e) => setDownloadFolder(e.target.value)}
-          placeholder="Flow-01"
-          className="w-full"
-        />
-      </div>
 
       {/* Action Buttons */}
       <div className="flex gap-2">
@@ -300,18 +281,17 @@ function ControlTab({ queue, addToQueue, removeFromQueue, clearQueue, clearCompl
           >
             <span className="text-sm font-medium text-primary flex items-center gap-2">
               <ListIcon />
-              Queue ({queue.length} items)
+              Queue ({queue.length})
             </span>
             {showQueue ? <ChevronUpIcon /> : <ChevronDownIcon />}
           </button>
-          {/* Clear Completed Button */}
           {queue.some(item => item.status === 'completed') && (
             <button
               onClick={clearCompletedFromQueue}
               className="text-xs text-text-muted hover:text-accent-teal transition-colors"
               title="Clear completed tasks"
             >
-              Clear completed
+              Clear done
             </button>
           )}
         </div>
@@ -320,7 +300,7 @@ function ControlTab({ queue, addToQueue, removeFromQueue, clearQueue, clearCompl
           <div className="max-h-40 overflow-y-auto">
             {queue.length === 0 ? (
               <div className="px-3 py-4 text-center text-text-muted text-sm">
-                No items in queue. Add prompts above.
+                Queue empty. Add prompts above.
               </div>
             ) : (
               <div className="divide-y divide-dark-border">
@@ -335,14 +315,14 @@ function ControlTab({ queue, addToQueue, removeFromQueue, clearQueue, clearCompl
                         {item.prompt || '(No prompt)'}
                       </p>
                       <p className="text-xs text-text-muted">
-                        {item.type === 'image-to-video' ? 'Image-to-Video' : 'Text-to-Video'}
+                        {MODE_LABELS[item.type] || item.type}
                         {item.status && ` • ${item.status}`}
                       </p>
                     </div>
                     <button
                       onClick={() => removeFromQueue(item.id)}
                       className="opacity-0 group-hover:opacity-100 p-1 hover:bg-accent-red/20 rounded transition-all"
-                      title="Remove from queue"
+                      title="Remove"
                     >
                       <XIcon />
                     </button>
