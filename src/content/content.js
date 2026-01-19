@@ -1,16 +1,16 @@
-/**
- * VeoFlow Content Script
- * Runs on Google Flow pages to automate video generation
- * Targets: labs.google/fx/tools/video-fx, labs.google/fx/tools/flow
- *
- * NOTE: This script is ONLY loaded via programmatic injection from background.js
- * (removed from manifest.json to prevent duplicate execution)
- */
-
-console.log("VeoFlow content script loaded on:", window.location.href);
+// Prevent duplicate script injection - if already loaded, exit immediately
+if (window.__VEOFLOW_CONTENT_SCRIPT_LOADED__) {
+  console.log("VeoFlow: Content script already loaded, skipping duplicate injection");
+} else {
+  window.__VEOFLOW_CONTENT_SCRIPT_LOADED__ = true;
+  console.log("VeoFlow content script loaded on:", window.location.href);
+}
 
 // State tracking
 let isAutomating = false;
+
+// Track processed task IDs to prevent double execution
+const processedTaskIds = new Set();
 
 // Helper: Sleep
 function sleep(ms) {
@@ -22,12 +22,19 @@ async function waitForElement(selectors, timeout = 15000) {
   const selectorList = Array.isArray(selectors) ? selectors : [selectors];
   const startTime = Date.now();
 
+  // Helper to check visibility using getBoundingClientRect
+  const isVisible = (el) => {
+    if (!el) return false;
+    const rect = el.getBoundingClientRect();
+    return rect.width > 0 && rect.height > 0;
+  };
+
   return new Promise((resolve, reject) => {
     const check = () => {
       for (const selector of selectorList) {
         const elements = document.querySelectorAll(selector);
         for (const el of elements) {
-          if (el && el.offsetParent !== null && !el.disabled) {
+          if (el && isVisible(el) && !el.disabled) {
             resolve(el);
             return;
           }
@@ -50,6 +57,13 @@ async function waitForElement(selectors, timeout = 15000) {
 function findElementByText(text, tagNames = ["button", "a", "span", "div"]) {
   const searchText = text.toLowerCase();
 
+  // Helper to check visibility using getBoundingClientRect
+  const isVisible = (el) => {
+    if (!el) return false;
+    const rect = el.getBoundingClientRect();
+    return rect.width > 0 && rect.height > 0;
+  };
+
   for (const tag of tagNames) {
     const elements = document.querySelectorAll(tag);
     for (const el of elements) {
@@ -58,7 +72,7 @@ function findElementByText(text, tagNames = ["button", "a", "span", "div"]) {
 
       if (
         (elText.includes(searchText) || ariaLabel.includes(searchText)) &&
-        el.offsetParent !== null
+        isVisible(el)
       ) {
         return el;
       }
@@ -78,7 +92,7 @@ function findButton(textOptions) {
   return null;
 }
 
-// Helper: Human-like click
+// Helper: Human-like click (single click only to avoid React double-handling)
 async function clickElement(element) {
   if (!element) {
     throw new Error("Cannot click null element");
@@ -91,22 +105,15 @@ async function clickElement(element) {
   const x = rect.left + rect.width / 2;
   const y = rect.top + rect.height / 2;
 
-  // Simulate mouse events
+  // Simulate hover first
   element.dispatchEvent(
     new MouseEvent("mouseover", { bubbles: true, clientX: x, clientY: y })
   );
   await sleep(50);
-  element.dispatchEvent(
-    new MouseEvent("mousedown", { bubbles: true, clientX: x, clientY: y })
-  );
-  await sleep(30);
-  element.dispatchEvent(
-    new MouseEvent("mouseup", { bubbles: true, clientX: x, clientY: y })
-  );
+
+  // IMPORTANT: Only use ONE click method to avoid React handling multiple clicks
+  // Using the native click() is most reliable for React apps
   element.click();
-  element.dispatchEvent(
-    new MouseEvent("click", { bubbles: true, clientX: x, clientY: y })
-  );
 
   await sleep(300);
   console.log(
@@ -166,72 +173,189 @@ async function typeText(element, text, delay = 20, clearFirst = false) {
   console.log("Pasted text INSTANTLY, length:", text.length);
 }
 
+// DEBUG: Log all visible buttons on the page
+function debugLogAllButtons() {
+  console.log("=== DEBUG: All visible buttons on page ===");
+  const allButtons = document.querySelectorAll('button');
+  let visibleCount = 0;
+
+  for (const btn of allButtons) {
+    // Use getBoundingClientRect for better visibility detection
+    const rect = btn.getBoundingClientRect();
+    const isVisible = rect.width > 0 && rect.height > 0;
+    if (!isVisible) continue; // Skip hidden
+    visibleCount++;
+
+    const text = (btn.textContent || "").trim().substring(0, 50);
+    const ariaLabel = btn.getAttribute("aria-label") || "";
+    const className = btn.className || "";
+    const id = btn.id || "";
+    const hasGoogleSymbol = btn.querySelector('.google-symbols, [class*="google-symbols"]') ? 'YES' : 'no';
+
+    console.log(`Button ${visibleCount}:`, {
+      text: text,
+      ariaLabel: ariaLabel,
+      id: id,
+      className: className.substring(0, 50),
+      disabled: btn.disabled,
+      hasGoogleSymbol: hasGoogleSymbol
+    });
+  }
+
+  console.log(`=== Total visible buttons: ${visibleCount} ===`);
+  return visibleCount;
+}
+
+// Helper: Check if element is truly visible (better than offsetParent)
+function isElementVisible(el) {
+  if (!el) return false;
+  const rect = el.getBoundingClientRect();
+  const style = window.getComputedStyle(el);
+  return (
+    rect.width > 0 &&
+    rect.height > 0 &&
+    style.visibility !== 'hidden' &&
+    style.display !== 'none' &&
+    style.opacity !== '0'
+  );
+}
+
 // Step 1: Click "Start project" or "Create new" button
 // IMPORTANT: Avoid clicking Edit, Save, Settings, or other unrelated buttons
 async function clickStartProject() {
   console.log("Looking for start/create button...");
 
-  // Wait a bit for page to fully load
-  await sleep(500);
+  // Wait for page to fully load
+  await sleep(1000);
+
+  // DEBUG: Log all buttons first
+  debugLogAllButtons();
 
   // Buttons to AVOID (not the new project button)
-  const avoidTexts = ["edit", "save", "settings", "delete", "cancel", "close", "menu", "more", "expand"];
+  const avoidTexts = ["edit", "save", "settings", "delete", "cancel", "close", "menu", "more", "expand", "sign", "log", "account", "profile", "help", "feedback", "share"];
   const shouldAvoid = (btn) => {
     const text = (btn.textContent || "").toLowerCase();
     const ariaLabel = (btn.getAttribute("aria-label") || "").toLowerCase();
     return avoidTexts.some(avoid => text.includes(avoid) || ariaLabel.includes(avoid));
   };
 
-  // 1. Look specifically for "New project" button with add icon
   const allButtons = document.querySelectorAll('button');
+
+  // Priority 0: Look for button with "add" icon + "project" text (Google Flow specific)
+  // The button has: <i class="google-symbols">add_2</i>New project
   for (const btn of allButtons) {
-    if (btn.offsetParent === null || btn.disabled) continue;
+    if (!isElementVisible(btn) || btn.disabled) continue;
     if (shouldAvoid(btn)) continue;
 
+    const hasAddIcon = btn.querySelector('i.google-symbols, [class*="google-symbols"]');
     const text = (btn.textContent || "").toLowerCase();
+
+    if (hasAddIcon && text.includes("project")) {
+      console.log("Found Google Flow 'New project' button with add icon!");
+      await clickElement(btn);
+      console.log("Waiting 5 seconds for new project UI to load...");
+      await sleep(5000);
+      return true;
+    }
+  }
+
+  // Priority 1: Look for "New project" button (exact match from Google Flow)
+  const projectKeywords = ["new project", "start project", "create project", "new video", "create video"];
+  for (const btn of allButtons) {
+    if (!isElementVisible(btn) || btn.disabled) continue;
+    if (shouldAvoid(btn)) continue;
+
+    const text = (btn.textContent || "").toLowerCase().trim();
     const ariaLabel = (btn.getAttribute("aria-label") || "").toLowerCase();
 
-    // Must explicitly contain "new project"
-    if (text.includes("new project") || ariaLabel.includes("new project")) {
-      await clickElement(btn);
-      console.log("Clicked 'New project' button");
-      await sleep(1500);
-      return true;
+    for (const keyword of projectKeywords) {
+      if (text.includes(keyword) || ariaLabel.includes(keyword)) {
+        console.log("Found project button with text:", text.substring(0, 30));
+        await clickElement(btn);
+        // IMPORTANT: Wait longer for new project UI to fully load
+        console.log("Waiting 5 seconds for new project UI to load...");
+        await sleep(5000);
+        return true;
+      }
     }
   }
 
-  // 2. Look for button with add icon AND project-related text
+  // Priority 2: Look for button with + icon (add/create)
   for (const btn of allButtons) {
-    if (btn.offsetParent === null || btn.disabled) continue;
+    if (!isElementVisible(btn) || btn.disabled) continue;
     if (shouldAvoid(btn)) continue;
 
-    const text = (btn.textContent || "").toLowerCase();
     const innerHTML = btn.innerHTML || "";
+    const text = (btn.textContent || "").toLowerCase();
 
-    // Has add icon (add_2 is Google's icon name) and contains "project" or "new"
-    if ((innerHTML.includes("add_2") || innerHTML.includes("add_circle")) &&
-        (text.includes("project") || text.includes("new"))) {
+    // Google Material icons: add, add_circle, add_box, plus
+    const hasAddIcon = innerHTML.includes("add") || innerHTML.includes("plus") || innerHTML.includes("+");
+    const hasProjectText = text.includes("project") || text.includes("new") || text.includes("create");
+
+    if (hasAddIcon && hasProjectText) {
+      console.log("Found add icon button with project text:", text.substring(0, 30));
       await clickElement(btn);
-      console.log("Clicked button with add icon + project text");
       await sleep(1500);
       return true;
     }
   }
 
-  // 3. Fallback: Look for FAB (floating action button) with + icon for creating
-  const fabButtons = document.querySelectorAll(
-    'button[aria-label*="new project" i], button[aria-label*="create project" i]'
-  );
-  for (const fab of fabButtons) {
-    if (fab.offsetParent !== null && !fab.disabled && !shouldAvoid(fab)) {
-      await clickElement(fab);
-      console.log("Clicked FAB new project button");
-      await sleep(1500);
-      return true;
+  // Priority 3: Look for any "Create" or "New" button that's prominent
+  const createKeywords = ["create", "new", "start", "begin", "make"];
+  for (const btn of allButtons) {
+    if (!isElementVisible(btn) || btn.disabled) continue;
+    if (shouldAvoid(btn)) continue;
+
+    const text = (btn.textContent || "").toLowerCase().trim();
+    const ariaLabel = (btn.getAttribute("aria-label") || "").toLowerCase();
+
+    // Only match if the button text is short (likely a primary action button)
+    if (text.length < 20) {
+      for (const keyword of createKeywords) {
+        if (text.includes(keyword) || ariaLabel.includes(keyword)) {
+          console.log("Found create/new button:", text);
+          await clickElement(btn);
+          await sleep(1500);
+          return true;
+        }
+      }
     }
   }
 
-  console.log("No start button found - may already be in create mode");
+  // Priority 4: Look for FAB (floating action button) - often used for primary action
+  const fabSelectors = [
+    'button[class*="fab"]',
+    'button[class*="floating"]',
+    'button[class*="primary"]',
+    'button[class*="action"]',
+    '[role="button"][class*="fab"]'
+  ];
+
+  for (const selector of fabSelectors) {
+    const fabs = document.querySelectorAll(selector);
+    for (const fab of fabs) {
+      if (isElementVisible(fab) && !fab.disabled && !shouldAvoid(fab)) {
+        const text = (fab.textContent || "").toLowerCase();
+        // Make sure it's not a navigation button
+        if (!text.includes("back") && !text.includes("home")) {
+          console.log("Found FAB button:", text.substring(0, 30));
+          await clickElement(fab);
+          await sleep(1500);
+          return true;
+        }
+      }
+    }
+  }
+
+  // Priority 5: Check if there's a textarea visible - might already be in create mode
+  const textarea = document.querySelector('textarea:not([hidden])');
+  if (textarea && isElementVisible(textarea)) {
+    console.log("Textarea found - already in create mode, no need to click start");
+    return true; // Already in create mode
+  }
+
+  console.log("No start button found - may already be in create mode or page structure is different");
+  console.log("Please check the console logs above to see all available buttons");
   return false;
 }
 
@@ -546,60 +670,162 @@ async function selectOutputCount(count) {
   }
 }
 
+// DEBUG: Log all input elements on the page
+function debugLogAllInputs() {
+  console.log("=== DEBUG: All input elements on page ===");
+
+  // Check textareas
+  const textareas = document.querySelectorAll("textarea");
+  console.log(`Textareas found: ${textareas.length}`);
+  textareas.forEach((ta, i) => {
+    console.log(`Textarea ${i + 1}:`, {
+      visible: ta.offsetParent !== null,
+      placeholder: ta.placeholder,
+      ariaLabel: ta.getAttribute("aria-label"),
+      className: (ta.className || "").substring(0, 50),
+      disabled: ta.disabled,
+      readOnly: ta.readOnly
+    });
+  });
+
+  // Check contenteditable
+  const editables = document.querySelectorAll('[contenteditable="true"]');
+  console.log(`Contenteditable elements found: ${editables.length}`);
+  editables.forEach((el, i) => {
+    console.log(`Contenteditable ${i + 1}:`, {
+      visible: el.offsetParent !== null,
+      tagName: el.tagName,
+      className: (el.className || "").substring(0, 50),
+      textContent: (el.textContent || "").substring(0, 30)
+    });
+  });
+
+  // Check inputs
+  const inputs = document.querySelectorAll('input[type="text"]');
+  console.log(`Text inputs found: ${inputs.length}`);
+  inputs.forEach((inp, i) => {
+    console.log(`Input ${i + 1}:`, {
+      visible: inp.offsetParent !== null,
+      placeholder: inp.placeholder,
+      ariaLabel: inp.getAttribute("aria-label"),
+      className: (inp.className || "").substring(0, 50)
+    });
+  });
+
+  console.log("=== End input debug ===");
+}
+
 // Step 5: Enter prompt text
 async function enterPrompt(prompt, clearFirst = false) {
   console.log("Entering prompt...", clearFirst ? "(clearing first)" : "");
 
-  // Find the prompt input area
-  const inputSelectors = [
-    'textarea[placeholder*="prompt" i]',
-    'textarea[placeholder*="describe" i]',
-    'textarea[aria-label*="prompt" i]',
-    "textarea",
-    '[contenteditable="true"]',
-    'input[type="text"][placeholder*="prompt" i]',
-    '[data-testid*="prompt"]',
-    '[class*="prompt"] textarea',
-    '[class*="input"] textarea',
-  ];
+  // Wait for new project dialog/UI to fully render
+  console.log("Waiting for new project dialog to load...");
 
-  for (const selector of inputSelectors) {
-    const elements = document.querySelectorAll(selector);
-    for (const el of elements) {
-      if (el.offsetParent !== null) {
-        // Check if this looks like a prompt input
-        const placeholder = (
-          el.getAttribute("placeholder") || ""
-        ).toLowerCase();
-        const ariaLabel = (el.getAttribute("aria-label") || "").toLowerCase();
-        const className = (el.className || "").toLowerCase();
+  // Try multiple times with increasing waits
+  for (let attempt = 1; attempt <= 5; attempt++) {
+    console.log(`Attempt ${attempt}/5 to find prompt input...`);
+    await sleep(2000);
 
-        const isPromptInput =
-          el.tagName === "TEXTAREA" ||
-          placeholder.includes("prompt") ||
-          placeholder.includes("describe") ||
-          ariaLabel.includes("prompt") ||
-          className.includes("prompt");
+    // DEBUG: Log what we find
+    const textareaCount = document.querySelectorAll("textarea").length;
+    const editableCount = document.querySelectorAll('[contenteditable="true"]').length;
+    const dialogCount = document.querySelectorAll('[role="dialog"], [role="modal"], dialog, [class*="dialog"], [class*="modal"]').length;
+    console.log(`Found: ${textareaCount} textareas, ${editableCount} editables, ${dialogCount} dialogs`);
 
-        if (isPromptInput || el.tagName === "TEXTAREA") {
-          await typeText(el, prompt, 0, clearFirst); // Paste full text at once (delay not used)
-          console.log("Prompt pasted successfully");
+    // Look inside dialogs/modals first (Google often uses these for new project)
+    const dialogSelectors = [
+      '[role="dialog"]',
+      '[role="modal"]',
+      'dialog',
+      '[class*="dialog"]',
+      '[class*="modal"]',
+      '[class*="overlay"]',
+      '[class*="panel"]'
+    ];
+
+    for (const dialogSelector of dialogSelectors) {
+      const dialogs = document.querySelectorAll(dialogSelector);
+      for (const dialog of dialogs) {
+        if (dialog.offsetParent === null) continue;
+
+        // Look for textarea inside dialog
+        const textarea = dialog.querySelector('textarea');
+        if (textarea && textarea.offsetParent !== null && !textarea.disabled) {
+          console.log("Found textarea inside dialog!");
+          textarea.focus();
+          await sleep(200);
+          await typeText(textarea, prompt, 0, clearFirst);
+          console.log("Prompt pasted in dialog textarea");
+          return true;
+        }
+
+        // Look for contenteditable inside dialog
+        const editable = dialog.querySelector('[contenteditable="true"]');
+        if (editable && editable.offsetParent !== null) {
+          console.log("Found contenteditable inside dialog!");
+          editable.focus();
+          await sleep(200);
+          await typeText(editable, prompt, 0, clearFirst);
+          console.log("Prompt pasted in dialog contenteditable");
           return true;
         }
       }
     }
-  }
 
-  // Fallback: find any visible textarea
-  const allTextareas = document.querySelectorAll("textarea");
-  for (const ta of allTextareas) {
-    if (ta.offsetParent !== null && !ta.disabled && !ta.readOnly) {
-      await typeText(ta, prompt, 0, clearFirst); // Paste full text at once
-      console.log("Prompt pasted (fallback)");
-      return true;
+    // Try finding textarea anywhere on page
+    const allTextareas = document.querySelectorAll("textarea");
+    for (const ta of allTextareas) {
+      // Check visibility more carefully
+      const rect = ta.getBoundingClientRect();
+      const isVisible = rect.width > 0 && rect.height > 0 && ta.offsetParent !== null;
+
+      if (isVisible && !ta.disabled && !ta.readOnly) {
+        console.log("Found visible textarea:", ta.placeholder || ta.className.substring(0, 30));
+        ta.focus();
+        await sleep(200);
+        await typeText(ta, prompt, 0, clearFirst);
+        console.log("Prompt pasted successfully");
+        return true;
+      }
+    }
+
+    // Try contenteditable elements
+    const allEditables = document.querySelectorAll('[contenteditable="true"]');
+    for (const ed of allEditables) {
+      const rect = ed.getBoundingClientRect();
+      const isVisible = rect.width > 0 && rect.height > 0 && ed.offsetParent !== null;
+
+      if (isVisible) {
+        console.log("Found visible contenteditable");
+        ed.focus();
+        await sleep(200);
+        await typeText(ed, prompt, 0, clearFirst);
+        console.log("Prompt pasted in contenteditable");
+        return true;
+      }
+    }
+
+    // Try role="textbox"
+    const textboxes = document.querySelectorAll('[role="textbox"]');
+    for (const tb of textboxes) {
+      const rect = tb.getBoundingClientRect();
+      const isVisible = rect.width > 0 && rect.height > 0;
+
+      if (isVisible) {
+        console.log("Found visible textbox role");
+        tb.focus();
+        await sleep(200);
+        await typeText(tb, prompt, 0, clearFirst);
+        console.log("Prompt pasted in textbox");
+        return true;
+      }
     }
   }
 
+  console.error("Could not find any input field after 5 attempts");
+  console.log("Current page URL:", window.location.href);
+  console.log("Current page title:", document.title);
   throw new Error("Could not find prompt input field");
 }
 
@@ -959,61 +1185,97 @@ async function executeTask(task, settings) {
   }
 }
 
-// Message handler
-chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-  console.log("Content script received message:", message.type);
+// Only register message handler ONCE (prevent duplicate listeners from multiple injections)
+if (!window.__VEOFLOW_LISTENER_REGISTERED__) {
+  window.__VEOFLOW_LISTENER_REGISTERED__ = true;
 
-  switch (message.type) {
-    case "EXECUTE_TASK":
-      executeTask(message.data.task, message.data.settings)
-        .then(sendResponse)
-        .catch((e) => sendResponse({ success: false, error: e.message }));
-      return true; // Keep channel open for async
+  // Message handler
+  chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+    console.log("Content script received message:", message.type);
 
-    case "CHECK_VIDEO_STATUS":
-      sendResponse(checkVideoStatus());
-      break;
+    switch (message.type) {
+      case "EXECUTE_TASK":
+        // CRITICAL: Check if this exact task was already processed to prevent double execution
+        const taskId = message.data.task?.id;
+        if (taskId && processedTaskIds.has(taskId)) {
+          console.log("VeoFlow: Task already processed, skipping duplicate:", taskId);
+          sendResponse({ success: true, skipped: true, message: "Already processed" });
+          return true;
+        }
 
-    case "DOWNLOAD_VIDEO":
-      downloadVideo(message.data?.folder)
-        .then(sendResponse)
-        .catch((e) => sendResponse({ success: false, error: e.message }));
-      return true;
+        // Mark task as being processed
+        if (taskId) {
+          processedTaskIds.add(taskId);
+          // Clean up old task IDs after 5 minutes to prevent memory leak
+          setTimeout(() => processedTaskIds.delete(taskId), 5 * 60 * 1000);
+        }
 
-    case "CLICK_START_PROJECT":
-      clickStartProject()
-        .then((result) => sendResponse({ success: result }))
-        .catch((e) => sendResponse({ success: false, error: e.message }));
-      return true;
+        executeTask(message.data.task, message.data.settings)
+          .then(sendResponse)
+          .catch((e) => sendResponse({ success: false, error: e.message }));
+        return true; // Keep channel open for async
 
-    case "PING":
-      sendResponse({
-        success: true,
-        message: "Content script active",
-        url: window.location.href,
-      });
-      break;
+      case "CHECK_VIDEO_STATUS":
+        sendResponse(checkVideoStatus());
+        break;
 
-    default:
-      sendResponse({ error: "Unknown message type" });
+      case "DOWNLOAD_VIDEO":
+        downloadVideo(message.data?.folder)
+          .then(sendResponse)
+          .catch((e) => sendResponse({ success: false, error: e.message }));
+        return true;
+
+      case "CLICK_START_PROJECT":
+        // Prevent multiple clicks - use a flag
+        if (window.__VEOFLOW_CLICKING_START__) {
+          console.log("VeoFlow: Already clicking start project, skipping");
+          sendResponse({ success: true, skipped: true });
+          return true;
+        }
+        window.__VEOFLOW_CLICKING_START__ = true;
+
+        clickStartProject()
+          .then((result) => {
+            window.__VEOFLOW_CLICKING_START__ = false;
+            sendResponse({ success: result });
+          })
+          .catch((e) => {
+            window.__VEOFLOW_CLICKING_START__ = false;
+            sendResponse({ success: false, error: e.message });
+          });
+        return true;
+
+      case "PING":
+        sendResponse({
+          success: true,
+          message: "Content script active",
+          url: window.location.href,
+        });
+        break;
+
+      default:
+        sendResponse({ error: "Unknown message type" });
+    }
+  });
+
+  // Auto-detect page state and notify background
+  function notifyReady() {
+    chrome.runtime
+      .sendMessage({
+        type: "CONTENT_SCRIPT_READY",
+        data: { url: window.location.href },
+      })
+      .catch(() => {});
   }
-});
 
-// Auto-detect page state and notify background
-function notifyReady() {
-  chrome.runtime
-    .sendMessage({
-      type: "CONTENT_SCRIPT_READY",
-      data: { url: window.location.href },
-    })
-    .catch(() => {});
-}
+  // Wait for page to fully load then notify
+  if (document.readyState === "complete") {
+    notifyReady();
+  } else {
+    window.addEventListener("load", notifyReady);
+  }
 
-// Wait for page to fully load then notify
-if (document.readyState === "complete") {
-  notifyReady();
+  console.log("VeoFlow content script initialized");
 } else {
-  window.addEventListener("load", notifyReady);
+  console.log("VeoFlow: Message listener already registered, skipping duplicate");
 }
-
-console.log("VeoFlow content script initialized");

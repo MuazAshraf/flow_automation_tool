@@ -1,0 +1,122 @@
+VeoFlow background service worker starting...
+background.js:572 VeoFlow background service worker initialized
+background.js:29 VeoFlow: State loaded from storage Object
+background.js:34 VeoFlow: Extension icon clicked, opening sidebar...
+background.js:35 VeoFlow: Tab info: Object
+background.js:46 VeoFlow: Sidebar opened successfully
+background.js:464 VeoFlow background received: START_QUEUE
+background.js:468 VeoFlow: START_QUEUE received
+background.js:474 VeoFlow: Queue: 2 items
+background.js:475 VeoFlow: Settings: Object
+background.js:316 VeoFlow: Starting queue processing...
+background.js:317 VeoFlow: Queue length: 2
+background.js:318 VeoFlow: Settings: Object
+background.js:81 VeoFlow [info]: Starting queue: 2 tasks
+background.js:99 VeoFlow progress: Object
+background.js:114 VeoFlow: Looking for Flow tab...
+background.js:121 VeoFlow: Found existing Flow tab: 1084372768
+background.js:81 VeoFlow [info]: Flow tab ready: 1084372768
+background.js:149 VeoFlow: Waiting for tab to load: 1084372768
+background.js:157 VeoFlow: Tab loaded successfully
+background.js:180 VeoFlow: Checking content script on tab: 1084372768
+background.js:190 VeoFlow: Content script not responding, injecting...
+background.js:464 VeoFlow background received: CONTENT_SCRIPT_READY
+background.js:517 VeoFlow: Content script ready on: https://labs.google/fx/tools/flow
+background.js:199 VeoFlow: Content script injected
+background.js:81 VeoFlow [info]: Clicking "Start project" button...
+background.js:81 VeoFlow [success]: Start project button clicked
+background.js:81 VeoFlow [info]: Processing 2 tasks (starting from 1)
+background.js:99 VeoFlow progress: Object
+background.js:81 VeoFlow [info]: --- Task 1/2 ---
+background.js:81 VeoFlow [info]: Executing task: Dark, cinematic comic book illustration style, hig...
+background.js:219 VeoFlow: Sending EXECUTE_TASK to content script...
+background.js:225 VeoFlow: Content script response: Object
+background.js:81 VeoFlow [success]: Task started: Dark, cinematic comic book illustration style, hig...
+background.js:81 VeoFlow [info]: Waiting for video to be partially complete (~50%) before next prompt...
+background.js:269 VeoFlow: Video status: Object
+background.js:279 VeoFlow: Status check error (continuing): Flow
+background.js:269 VeoFlow: Video status: Object
+background.js:279 VeoFlow: Status check error (continuing): Flow
+background.js:269 VeoFlow: Video status: Object
+background.js:279 VeoFlow: Status check error (continuing): Flow
+background.js:269 VeoFlow: Video status: Object
+background.js:279 VeoFlow: Status check error (continuing): Flow
+background.js:269 VeoFlow: Video status: Object
+background.js:279 VeoFlow: Status check error (continuing): Flow
+background.js:269 VeoFlow: Video status: {status: 'error', error: 'Flow'}
+background.js:279 VeoFlow: Status check error (continuing): Flow
+background.js:269 VeoFlow: Video status: {status: 'error', error: 'Flow'}
+background.js:279 VeoFlow: Status check error (continuing): Flow
+background.js:269 VeoFlow: Video status: {status: 'error', error: 'Flow'}
+background.js:279 VeoFlow: Status check error (continuing): Flow
+background.js:269 VeoFlow: Video status: {status: 'error', error: 'Flow'}
+background.js:279 VeoFlow: Status check error (continuing): Flow
+background.js:269 VeoFlow: Video status: {status: 'error', error: 'Flow'}
+background.js:279 VeoFlow: Status check error (continuing): Flow
+background.js:269 VeoFlow: Video status: {status: 'error', error: 'Flow'}
+background.js:279 VeoFlow: Status check error (continuing): Flow
+background.js:269 VeoFlow: Video status: {status: 'error', error: 'Flow'}
+background.js:279 VeoFlow: Status check error (continuing): Flow
+background.js:81 VeoFlow [info]: Video partially complete, starting next prompt in same project
+background.js:81 VeoFlow [success]: Task 1 prompt submitted in same project
+background.js:81 VeoFlow [info]: Waiting 1s before entering next prompt in same project...
+background.js:99 VeoFlow progress: {current: 2, total: 2, status: 'Task 2/2'}
+background.js:81 VeoFlow [info]: --- Task 2/2 ---
+background.js:81 VeoFlow [info]: Executing task: Interior comic panel: the family gathered in a dim...
+background.js:219 VeoFlow: Sending EXECUTE_TASK to content script...
+background.js:225 VeoFlow: Content script response: {success: true}
+background.js:81 VeoFlow [success]: Task started: Interior comic panel: the family gathered in a dim...
+background.js:81 VeoFlow [info]: Waiting for final video to complete (30-60s)...
+background.js:269 VeoFlow: Video status: {status: 'error', error: 'Flow'}
+background.js:279 VeoFlow: Status check error (continuing): Flow
+background.js:269 VeoFlow: Video status: {status: 'error', error: 'Flow'}
+background.js:279 VeoFlow: Status check error (continuing): Flow
+background.js:269 VeoFlow: Video status: {status: 'error', error: 'Flow'}
+background.js:279 VeoFlow: Status check error (continuing): Flow
+background.js:269 VeoFlow: Video status: {status: 'error', error: 'Flow'}
+background.js:279 VeoFlow: Status check error (continuing): Flow
+background.js:269 VeoFlow: Video status: {status: 'error', error: 'Flow'}
+background.js:279 VeoFlow: Status check error (continuing): Flow
+background.js:269 VeoFlow: Video status: {status: 'error', error: 'Flow'}
+background.js:279 VeoFlow: Status check error (continuing): Flow
+background.js:269 VeoFlow: Video status: {status: 'error', error: 'Flow'}
+background.js:279 VeoFlow: Status check error (continuing): Flow
+background.js:269 VeoFlow: Video status: {status: 'error', error: 'Flow'}
+background.js:279 VeoFlow: Status check error (continuing): Flow
+background.js:269 VeoFlow: Video status: {status: 'error', error: 'Flow'}
+background.js:279 VeoFlow: Status check error (continuing): Flow
+background.js:269 VeoFlow: Video status: {status: 'error', error: 'Flow'}
+background.js:279 VeoFlow: Status check error (continuing): Flow
+background.js:269 VeoFlow: Video status: {status: 'error', error: 'Flow'}
+background.js:279 VeoFlow: Status check error (continuing): Flow
+background.js:269 VeoFlow: Video status: {status: 'error', error: 'Flow'}
+background.js:279 VeoFlow: Status check error (continuing): Flow
+background.js:269 VeoFlow: Video status: {status: 'error', error: 'Flow'}
+background.js:279 VeoFlow: Status check error (continuing): Flow
+background.js:269 VeoFlow: Video status: {status: 'error', error: 'Flow'}
+background.js:279 VeoFlow: Status check error (continuing): Flow
+background.js:269 VeoFlow: Video status: {status: 'error', error: 'Flow'}
+background.js:279 VeoFlow: Status check error (continuing): Flow
+background.js:269 VeoFlow: Video status: {status: 'error', error: 'Flow'}
+background.js:279 VeoFlow: Status check error (continuing): Flow
+background.js:269 VeoFlow: Video status: {status: 'error', error: 'Flow'}
+background.js:279 VeoFlow: Status check error (continuing): Flow
+background.js:269 VeoFlow: Video status: {status: 'error', error: 'Flow'}
+background.js:279 VeoFlow: Status check error (continuing): Flow
+background.js:269 VeoFlow: Video status: {status: 'error', error: 'Flow'}
+background.js:279 VeoFlow: Status check error (continuing): Flow
+background.js:269 VeoFlow: Video status: {status: 'error', error: 'Flow'}
+background.js:279 VeoFlow: Status check error (continuing): Flow
+background.js:81 VeoFlow [info]: Final video wait time reached
+background.js:464 VeoFlow background received: DOWNLOAD_URL
+background.js:523 VeoFlow: DOWNLOAD_URL received: VeoFlow-Videos/VeoFlow-Videos_1_1768837040034.mp4
+background.js:464 VeoFlow background received: DOWNLOAD_URL
+background.js:523 VeoFlow: DOWNLOAD_URL received: VeoFlow-Videos/VeoFlow-Videos_2_1768837040535.mp4
+background.js:537 VeoFlow: Download started, ID: 629
+background.js:81 VeoFlow [success]: Video download started: VeoFlow-Videos/VeoFlow-Videos_1_1768837040034.mp4
+background.js:81 VeoFlow [success]: Video downloaded
+background.js:81 VeoFlow [success]: Task 2 prompt submitted in same project
+background.js:99 VeoFlow progress: {current: 2, total: 2, status: 'Completed'}
+background.js:81 VeoFlow [success]: Queue processing finished!
+background.js:537 VeoFlow: Download started, ID: 630
+background.js:81 VeoFlow [success]: Video download started: VeoFlow-Videos/VeoFlow-Videos_2_1768837040535.mp4

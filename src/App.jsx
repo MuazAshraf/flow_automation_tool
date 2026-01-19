@@ -201,6 +201,16 @@ function App() {
     }
   }
 
+  const clearCompletedFromQueue = () => {
+    setQueue(prev => {
+      const updated = prev.filter(item => item.status !== 'completed')
+      if (typeof chrome !== 'undefined' && chrome.storage) {
+        chrome.storage.local.set({ queue: updated })
+      }
+      return updated
+    })
+  }
+
   const goToFlow = () => {
     if (typeof chrome !== 'undefined' && chrome.tabs) {
       chrome.tabs.create({ url: 'https://labs.google/fx/tools/flow' })
@@ -254,6 +264,7 @@ function App() {
             addToQueue={addToQueue}
             removeFromQueue={removeFromQueue}
             clearQueue={clearQueue}
+            clearCompletedFromQueue={clearCompletedFromQueue}
             startQueue={startQueue}
             stopQueue={stopQueue}
             isRunning={isRunning}

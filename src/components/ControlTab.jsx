@@ -81,7 +81,7 @@ const ChevronUpIcon = () => (
   </svg>
 )
 
-function ControlTab({ queue, addToQueue, removeFromQueue, clearQueue, startQueue, stopQueue, isRunning, progress, settings, updateSettings, isOnFlowPage, goToFlow }) {
+function ControlTab({ queue, addToQueue, removeFromQueue, clearQueue, clearCompletedFromQueue, startQueue, stopQueue, isRunning, progress, settings, updateSettings, isOnFlowPage, goToFlow }) {
   const [creationMode, setCreationMode] = useState('text-to-video')
   const [promptText, setPromptText] = useState('')
   const [selectedImages, setSelectedImages] = useState([])
@@ -293,16 +293,28 @@ function ControlTab({ queue, addToQueue, removeFromQueue, clearQueue, startQueue
 
       {/* Queue Display */}
       <div className="border border-dark-border rounded-lg overflow-hidden">
-        <button
-          onClick={() => setShowQueue(!showQueue)}
-          className="w-full flex items-center justify-between px-3 py-2 bg-dark-surface hover:bg-dark-hover transition-colors"
-        >
-          <span className="text-sm font-medium text-primary flex items-center gap-2">
-            <ListIcon />
-            Queue ({queue.length} items)
-          </span>
-          {showQueue ? <ChevronUpIcon /> : <ChevronDownIcon />}
-        </button>
+        <div className="flex items-center justify-between px-3 py-2 bg-dark-surface">
+          <button
+            onClick={() => setShowQueue(!showQueue)}
+            className="flex items-center gap-2 hover:bg-dark-hover transition-colors rounded px-1"
+          >
+            <span className="text-sm font-medium text-primary flex items-center gap-2">
+              <ListIcon />
+              Queue ({queue.length} items)
+            </span>
+            {showQueue ? <ChevronUpIcon /> : <ChevronDownIcon />}
+          </button>
+          {/* Clear Completed Button */}
+          {queue.some(item => item.status === 'completed') && (
+            <button
+              onClick={clearCompletedFromQueue}
+              className="text-xs text-text-muted hover:text-accent-teal transition-colors"
+              title="Clear completed tasks"
+            >
+              Clear completed
+            </button>
+          )}
+        </div>
 
         {showQueue && (
           <div className="max-h-40 overflow-y-auto">

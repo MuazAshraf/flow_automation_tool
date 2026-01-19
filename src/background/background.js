@@ -179,25 +179,36 @@ async function waitForTabLoad(tabId, timeout = 30000) {
 async function ensureContentScript(tabId) {
   console.log('VeoFlow: Checking content script on tab:', tabId)
 
-  try {
-    // Try to ping existing content script
-    const response = await chrome.tabs.sendMessage(tabId, { type: 'PING' })
-    if (response && response.success) {
-      console.log('VeoFlow: Content script already active')
-      return true
+  // Try multiple pings with longer timeout to avoid unnecessary re-injection
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    try {
+      // Try to ping existing content script with timeout
+      const response = await Promise.race([
+        chrome.tabs.sendMessage(tabId, { type: 'PING' }),
+        new Promise((_, reject) => setTimeout(() => reject(new Error('Ping timeout')), 2000))
+      ])
+
+      if (response && response.success) {
+        console.log('VeoFlow: Content script already active (attempt', attempt, ')')
+        return true
+      }
+    } catch (e) {
+      console.log('VeoFlow: Ping attempt', attempt, 'failed:', e.message)
+      if (attempt < 3) {
+        await sleep(500) // Wait before retry
+      }
     }
-  } catch (e) {
-    console.log('VeoFlow: Content script not responding, injecting...')
   }
 
-  // Inject content script
+  // All pings failed, inject content script
+  console.log('VeoFlow: Content script not responding after 3 attempts, injecting...')
   try {
     await chrome.scripting.executeScript({
       target: { tabId: tabId },
       files: ['src/content/content.js']
     })
     console.log('VeoFlow: Content script injected')
-    await sleep(1000) // Wait for script to initialize
+    await sleep(1500) // Wait longer for script to initialize
     return true
   } catch (e) {
     console.error('VeoFlow: Failed to inject content script:', e)
@@ -454,9 +465,15 @@ async function processQueue() {
   updateProgress(state.queue.length, state.queue.length, 'Completed')
   log('success', 'Queue processing finished!')
 
-  // Update queue in storage
-  chrome.storage.local.set({ queue: state.queue })
-  chrome.runtime.sendMessage({ type: 'QUEUE_UPDATE', data: state.queue }).catch(() => {})
+  // Remove completed tasks from queue (keep only pending and failed)
+  const remainingQueue = state.queue.filter(task => task.status !== 'completed')
+  state.queue = remainingQueue
+
+  // Update queue in storage and notify UI
+  chrome.storage.local.set({ queue: remainingQueue })
+  chrome.runtime.sendMessage({ type: 'QUEUE_UPDATE', data: remainingQueue }).catch(() => {})
+
+  log('info', `Cleared ${state.queue.length === 0 ? 'all' : 'completed'} tasks from queue`)
 }
 
 // Message handler
