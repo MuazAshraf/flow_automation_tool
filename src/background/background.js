@@ -502,6 +502,11 @@ async function processQueue() {
   updateProgress(state.queue.length, state.queue.length, 'Completed')
   log('success', 'Queue processing finished!')
 
+  // Reset settings flag for next queue run
+  if (state.activeTabId) {
+    chrome.tabs.sendMessage(state.activeTabId, { type: 'RESET_SETTINGS_FLAG' }).catch(() => {})
+  }
+
   // Remove completed tasks from queue (keep only pending and failed)
   const remainingQueue = state.queue.filter(task => task.status !== 'completed')
   state.queue = remainingQueue
@@ -556,6 +561,10 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       chrome.storage.local.set({ isRunning: false })
       sendStatusUpdate()
       log('info', 'Queue stopped by user')
+      // Reset settings flag for next queue run
+      if (state.activeTabId) {
+        chrome.tabs.sendMessage(state.activeTabId, { type: 'RESET_SETTINGS_FLAG' }).catch(() => {})
+      }
       sendResponse({ success: true })
       break
 

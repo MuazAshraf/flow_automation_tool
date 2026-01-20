@@ -5,6 +5,8 @@ if (window.__VEOFLOW_LOADED__) {
   window.__VEOFLOW_LOADED__ = true;
   window.__VEOFLOW_PROCESSED_TASKS__ = window.__VEOFLOW_PROCESSED_TASKS__ || new Set();
   window.__VEOFLOW_IS_AUTOMATING__ = false;
+  window.__VEOFLOW_SETTINGS_APPLIED__ = false;
+  window.__VEOFLOW_TUNE_CLICKED__ = false;
   console.log("VeoFlow content script loaded");
 }
 
@@ -232,7 +234,7 @@ async function clickStartProject() {
   debugLogAllButtons();
 
   // Buttons to AVOID (not the new project button)
-  const avoidTexts = ["edit", "save", "settings", "delete", "cancel", "close", "menu", "more", "expand", "sign", "log", "account", "profile", "help", "feedback", "share"];
+  const avoidTexts = ["edit", "save", "settings", "delete", "cancel", "close", "menu", "more", "expand", "sign", "log", "account", "profile", "help", "feedback", "share", "tune"];
   const shouldAvoid = (btn) => {
     const text = (btn.textContent || "").toLowerCase();
     const ariaLabel = (btn.getAttribute("aria-label") || "").toLowerCase();
@@ -360,8 +362,15 @@ async function clickStartProject() {
 }
 
 // Open settings panel if it exists (some settings might be behind a gear icon)
+// Uses a global flag to ensure we only click the tune button ONCE per session
 async function openSettingsIfNeeded() {
   console.log("VeoFlow: Checking if settings panel needs to be opened...");
+
+  // GUARD: If we already opened settings in this session, don't open again
+  if (window.__VEOFLOW_TUNE_CLICKED__) {
+    console.log("VeoFlow: Tune button already clicked this session, skipping");
+    return true;
+  }
 
   // Look for settings/gear button that might need to be clicked
   // Priority: "tune" icon (Google Flow standard), then aria-labels
@@ -389,11 +398,13 @@ async function openSettingsIfNeeded() {
       const settingsPanel = document.querySelector('[role="dialog"][class*="Popover"], [class*="settings-panel"], [class*="PopoverContent"]');
       if (settingsPanel && isElementVisible(settingsPanel)) {
         console.log("VeoFlow: Settings panel already open");
+        window.__VEOFLOW_TUNE_CLICKED__ = true; // Mark as clicked even if already open
         return true;
       }
 
       console.log("VeoFlow: Opening settings panel...");
       await clickElement(btn);
+      window.__VEOFLOW_TUNE_CLICKED__ = true; // Mark tune button as clicked
       await sleep(500);
       return true;
     }
@@ -435,7 +446,19 @@ async function selectModel(modelValue, isImageMode = false) {
     const modelKeywords = isImageMode ? ["imagen", "nano", "banana"] : ["veo"];
     const buttons = document.querySelectorAll('button');
 
+    // Helper to check if this is the tune/settings button (should NOT click)
+    const isTuneButton = (btn) => {
+      const text = (btn.textContent || "").toLowerCase();
+      const iconText = btn.querySelector('i, span.material-icons, span.google-symbols')?.textContent || "";
+      const ariaLabel = (btn.getAttribute("aria-label") || "").toLowerCase();
+      return text.includes("tune") || iconText.includes("tune") ||
+             ariaLabel.includes("settings") || ariaLabel.includes("tune");
+    };
+
     for (const btn of buttons) {
+      // Skip the tune/settings button
+      if (isTuneButton(btn)) continue;
+
       const btnText = btn.textContent.toLowerCase();
       const hasModelKeyword = modelKeywords.some(kw => btnText.includes(kw));
 
@@ -510,10 +533,21 @@ async function selectRatio(ratio) {
     const buttons = document.querySelectorAll('button');
     let ratioButton = null;
 
+    // Helper to check if this is the tune/settings button (should NOT click)
+    const isTuneButton = (btn) => {
+      const text = (btn.textContent || "").toLowerCase();
+      const iconText = btn.querySelector('i, span.material-icons, span.google-symbols')?.textContent || "";
+      const ariaLabel = (btn.getAttribute("aria-label") || "").toLowerCase();
+      return text.includes("tune") || iconText.includes("tune") ||
+             ariaLabel.includes("settings") || ariaLabel.includes("tune");
+    };
+
     console.log("VeoFlow: Scanning", buttons.length, "buttons for ratio selector...");
     let buttonIndex = 0;
     for (const btn of buttons) {
       if (!isElementVisible(btn)) continue;
+      // Skip the tune/settings button
+      if (isTuneButton(btn)) continue;
       buttonIndex++;
 
       const btnText = btn.textContent.toLowerCase();
@@ -839,7 +873,7 @@ async function clickGenerate() {
   await sleep(300);
 
   // IMPORTANT: Buttons to AVOID (these are NOT the generate button)
-  const avoidTexts = ["expand", "edit", "settings", "more", "menu", "copy", "download", "new project"];
+  const avoidTexts = ["expand", "edit", "settings", "more", "menu", "copy", "download", "new project", "tune"];
 
   // Helper to check if button should be avoided
   const shouldAvoid = (btn) => {
@@ -1112,6 +1146,12 @@ async function uploadImage(imageData) {
 // Apply settings ONCE at the start of queue processing
 // Called once before processing tasks, NOT for every task
 async function applySettings(mode, settings) {
+  // Guard: Prevent applying settings multiple times in the same session
+  if (window.__VEOFLOW_SETTINGS_APPLIED__) {
+    console.log("VeoFlow: Settings already applied in this session, skipping");
+    return { success: true, skipped: true };
+  }
+
   console.log("VeoFlow: ===== APPLYING SETTINGS (ONCE) =====");
   console.log("VeoFlow: Mode:", mode);
   console.log("VeoFlow: Settings:", JSON.stringify(settings));
@@ -1168,6 +1208,9 @@ async function applySettings(mode, settings) {
     // Double-click to ensure all popups are closed
     document.body.click();
     await sleep(200);
+
+    // Mark settings as applied to prevent re-opening
+    window.__VEOFLOW_SETTINGS_APPLIED__ = true;
 
     console.log("VeoFlow: ===== ALL SETTINGS APPLIED SUCCESSFULLY =====");
     return { success: true };
@@ -1262,6 +1305,14 @@ if (!window.__VEOFLOW_LISTENER__) {
           message: "Content script active",
           url: window.location.href,
         });
+        break;
+
+      case "RESET_SETTINGS_FLAG":
+        // Reset ALL settings-related flags when queue completes or stops
+        window.__VEOFLOW_SETTINGS_APPLIED__ = false;
+        window.__VEOFLOW_TUNE_CLICKED__ = false;
+        console.log("VeoFlow: Settings flags reset - ready for next queue run");
+        sendResponse({ success: true });
         break;
 
       default:
