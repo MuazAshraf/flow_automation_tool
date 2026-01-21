@@ -7,25 +7,25 @@ export default {
   theme: {
     extend: {
       colors: {
-        // Modern Black, White & Parrot Green theme
-        'primary': '#56CC38',           // Parrot green - main accent
-        'primary-dark': '#45a82e',      // Darker green for hover
-        'primary-light': '#6fd954',     // Lighter green
+        // Modern Blue & White theme
+        'primary': '#2B5288',           // Deep blue - main accent
+        'primary-dark': '#1E3D60',      // Darker blue for hover
+        'primary-light': '#3A6BA8',     // Lighter blue
 
-        'dark-bg': '#000000',           // Pure black background
-        'dark-surface': '#0a0a0a',      // Slightly lighter black for cards
-        'dark-border': '#1a1a1a',       // Dark gray border
-        'dark-input': '#0f0f0f',        // Input background
-        'dark-hover': '#141414',        // Hover state
+        'dark-bg': '#FFFFFF',           // White background
+        'dark-surface': '#F5F5F5',      // Light gray for cards
+        'dark-border': '#E0E0E0',       // Light border
+        'dark-input': '#FFFFFF',        // White input background
+        'dark-hover': '#EEEEEE',        // Hover state
 
-        'accent-teal': '#56CC38',       // Using green as main accent
-        'accent-green': '#56CC38',      // Parrot green
-        'accent-yellow': '#56CC38',     // Replaced with green
-        'accent-red': '#ff4757',        // Keep red for errors/danger
-        'accent-orange': '#56CC38',     // Replaced with green
+        'accent-teal': '#2B5288',       // Using blue as main accent
+        'accent-green': '#2B5288',      // Blue
+        'accent-yellow': '#2B5288',     // Replaced with blue
+        'accent-red': '#DC3545',        // Red for errors
+        'accent-orange': '#2B5288',     // Replaced with blue
 
-        'text-primary': '#ffffff',      // Pure white text
-        'text-secondary': '#e0e0e0',    // Light gray
+        'text-primary': '#1a1a1a',      // Dark text
+        'text-secondary': '#333333',    // Slightly lighter dark
         'text-muted': '#666666',        // Muted gray
       },
     },

@@ -73,11 +73,16 @@ function App() {
   const [settings, setSettings] = useState(DEFAULT_SETTINGS)
   const [queue, setQueue] = useState([])
   const [isRunning, setIsRunning] = useState(false)
+  const [isPaused, setIsPaused] = useState(false)
   const [logs, setLogs] = useState([])
   const [failedTasks, setFailedTasks] = useState([])
   const [progress, setProgress] = useState({ current: 0, total: 0, status: 'Ready' })
   const [isOnFlowPage, setIsOnFlowPage] = useState(false)
   const [currentTabUrl, setCurrentTabUrl] = useState('')
+
+  // Store image prompts and topic for character consistency between modes
+  const [storedImagePrompts, setStoredImagePrompts] = useState([])
+  const [storedImageTopic, setStoredImageTopic] = useState('')
 
   // Check if current tab is on Google Flow
   useEffect(() => {
@@ -160,6 +165,10 @@ function App() {
           setFailedTasks(prev => [...prev, message.data])
         } else if (message.type === 'TAB_CHANGED') {
           setIsOnFlowPage(message.data.isOnFlow)
+        } else if (message.type === 'QUEUE_PAUSED') {
+          setIsPaused(true)
+        } else if (message.type === 'QUEUE_RESUMED') {
+          setIsPaused(false)
         }
       }
 
@@ -263,10 +272,18 @@ function App() {
 
   const stopQueue = () => {
     setIsRunning(false)
+    setIsPaused(false)
     setProgress(prev => ({ ...prev, status: 'Stopped' }))
 
     if (typeof chrome !== 'undefined' && chrome.runtime) {
       chrome.runtime.sendMessage({ type: 'STOP_QUEUE' })
+    }
+  }
+
+  const continueQueue = () => {
+    setIsPaused(false)
+    if (typeof chrome !== 'undefined' && chrome.runtime) {
+      chrome.runtime.sendMessage({ type: 'CONTINUE_QUEUE' })
     }
   }
 
@@ -296,9 +313,15 @@ function App() {
             clearCompletedFromQueue={clearCompletedFromQueue}
             startQueue={startQueue}
             stopQueue={stopQueue}
+            continueQueue={continueQueue}
             isRunning={isRunning}
+            isPaused={isPaused}
             progress={progress}
             settings={settings}
+            storedImagePrompts={storedImagePrompts}
+            setStoredImagePrompts={setStoredImagePrompts}
+            storedImageTopic={storedImageTopic}
+            setStoredImageTopic={setStoredImageTopic}
           />
         )
       case 'settings':
@@ -325,7 +348,7 @@ function App() {
   }
 
   return (
-    <div className="flex flex-col h-full bg-black">
+    <div className="flex flex-col h-full bg-dark-bg">
       <Header />
 
       {/* Flow Status Banner */}

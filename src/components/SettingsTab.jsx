@@ -200,6 +200,22 @@ function SettingsTab({ settings, updateSettings }) {
             </div>
           </div>
         )}
+
+        {/* Pause for reference images */}
+        <div className="flex items-center justify-between">
+          <div>
+            <label className="text-sm text-text-secondary">Pause for references:</label>
+            <p className="text-xs text-text-muted">Pause after each image to add reference</p>
+          </div>
+          <button
+            onClick={() => updateSettings('pauseForReference', !settings.pauseForReference)}
+            className={`toggle ${settings.pauseForReference ? 'toggle-enabled' : 'toggle-disabled'}`}
+          >
+            <span
+              className={`toggle-knob ${settings.pauseForReference ? 'translate-x-5' : 'translate-x-1'}`}
+            />
+          </button>
+        </div>
       </div>
     </div>
   )

@@ -2,21 +2,22 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Modern Black, White & Parrot Green Theme */
+/* Modern Blue & Cream Theme */
 :root {
   font-family: 'Inter', system-ui, -apple-system, sans-serif;
   line-height: 1.5;
   font-weight: 400;
-  color-scheme: dark;
+  color-scheme: light;
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 
-  --primary: #56CC38;
-  --primary-dark: #45a82e;
-  --black: #000000;
-  --white: #ffffff;
+  --primary: #2B5288;
+  --primary-dark: #1E3D60;
+  --primary-light: #3A6BA8;
+  --bg: #F3F1E5;
+  --text: #1a1a1a;
 }
 
 html, body, #root {
@@ -29,33 +30,33 @@ html, body, #root {
 }
 
 body {
-  background-color: #000000;
-  color: #ffffff;
+  background-color: #FFFFFF;
+  color: #1a1a1a;
 }
 
-/* Custom scrollbar - Green accent */
+/* Custom scrollbar - Blue accent */
 ::-webkit-scrollbar {
   width: 6px;
 }
 
 ::-webkit-scrollbar-track {
-  background: #000000;
+  background: #F5F5F5;
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #56CC38;
+  background: #2B5288;
   border-radius: 3px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #6fd954;
+  background: #3A6BA8;
 }
 
 /* Input and textarea styling */
 input, textarea, select {
-  background-color: #0a0a0a;
-  border: 1px solid #1a1a1a;
-  color: #ffffff;
+  background-color: #FFFFFF;
+  border: 1px solid #D4D2C7;
+  color: #1a1a1a;
   border-radius: 8px;
   padding: 10px 14px;
   font-size: 14px;
@@ -64,18 +65,18 @@ input, textarea, select {
 }
 
 input:focus, textarea:focus, select:focus {
-  border-color: #56CC38;
-  box-shadow: 0 0 0 2px rgba(86, 204, 56, 0.2);
+  border-color: #2B5288;
+  box-shadow: 0 0 0 2px rgba(43, 82, 136, 0.2);
 }
 
 input::placeholder, textarea::placeholder {
-  color: #666666;
+  color: #999999;
 }
 
 select {
   cursor: pointer;
   appearance: none;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%2356CC38' d='M6 8L2 4h8z'/%3E%3C/svg%3E");
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%232B5288' d='M6 8L2 4h8z'/%3E%3C/svg%3E");
   background-repeat: no-repeat;
   background-position: right 12px center;
   padding-right: 32px;
@@ -87,45 +88,45 @@ select {
 }
 
 .btn-primary {
-  background-color: #56CC38;
-  color: #000000;
+  background-color: #2B5288;
+  color: #FFFFFF;
 }
 .btn-primary:hover {
-  background-color: #6fd954;
+  background-color: #1E3D60;
 }
 
 .btn-success {
-  background-color: #56CC38;
-  color: #000000;
+  background-color: #2B5288;
+  color: #FFFFFF;
 }
 .btn-success:hover {
-  background-color: #6fd954;
+  background-color: #1E3D60;
 }
 
 .btn-warning {
-  background-color: #56CC38;
-  color: #000000;
+  background-color: #2B5288;
+  color: #FFFFFF;
 }
 .btn-warning:hover {
-  background-color: #6fd954;
+  background-color: #1E3D60;
 }
 
 .btn-danger {
-  background-color: #ff4757;
-  color: #ffffff;
+  background-color: #C41E3A;
+  color: #FFFFFF;
 }
 .btn-danger:hover {
-  background-color: #ff6b7a;
+  background-color: #A01830;
 }
 
 .btn-secondary {
-  background-color: #0a0a0a;
-  border: 1px solid #1a1a1a;
-  color: #ffffff;
+  background-color: #FFFFFF;
+  border: 1px solid #D4D2C7;
+  color: #1a1a1a;
 }
 .btn-secondary:hover {
-  background-color: #141414;
-  border-color: #56CC38;
+  background-color: #E8E6DA;
+  border-color: #2B5288;
 }
 
 /* Tab styles */
@@ -135,18 +136,18 @@ select {
 }
 
 .tab:hover {
-  color: #ffffff;
+  color: #1a1a1a;
 }
 
 .tab.active {
-  color: #56CC38;
-  border-bottom: 2px solid #56CC38;
+  color: #2B5288;
+  border-bottom: 2px solid #2B5288;
 }
 
 /* Card styles */
 .card {
-  background-color: #0a0a0a;
-  border: 1px solid #1a1a1a;
+  background-color: #FFFFFF;
+  border: 1px solid #D4D2C7;
   border-radius: 12px;
   padding: 16px;
 }
@@ -157,18 +158,19 @@ select {
 }
 
 .toggle-enabled {
-  background-color: #56CC38;
+  background-color: #2B5288;
 }
 
 .toggle-disabled {
-  background-color: #1a1a1a;
+  background-color: #D4D2C7;
 }
 
 .toggle-knob {
-  @apply inline-block h-4 w-4 transform rounded-full bg-white transition-transform shadow-md;
+  @apply inline-block h-4 w-4 transform rounded-full transition-transform shadow-md;
+  background-color: #FFFFFF;
 }
 
 /* Section headers */
 h2.text-accent-teal, .text-accent-teal {
-  color: #56CC38 !important;
+  color: #2B5288 !important;
 }

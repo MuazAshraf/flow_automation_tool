@@ -1,19 +1,27 @@
 import React, { useState, useRef } from 'react'
+import { generatePrompts, generateVideoPrompts } from '../utils/openai'
 
 // Icons
+const SparklesIcon = () => (
+  <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M12 3l1.5 4.5L18 9l-4.5 1.5L12 15l-1.5-4.5L6 9l4.5-1.5L12 3z"/>
+    <path d="M5 19l1 3 1-3 3-1-3-1-1-3-1 3-3 1 3 1z"/>
+    <path d="M19 12l1 2 1-2 2-1-2-1-1-2-1 2-2 1 2 1z"/>
+  </svg>
+)
+
+const LoadingSpinner = () => (
+  <svg className="animate-spin" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+    <circle cx="12" cy="12" r="10" strokeOpacity="0.25"/>
+    <path d="M12 2a10 10 0 0 1 10 10" strokeLinecap="round"/>
+  </svg>
+)
+
 const UploadIcon = () => (
   <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
     <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
     <polyline points="17 8 12 3 7 8"/>
     <line x1="12" y1="3" x2="12" y2="15"/>
-  </svg>
-)
-
-const ImageIcon = () => (
-  <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
-    <circle cx="8.5" cy="8.5" r="1.5"/>
-    <polyline points="21 15 16 10 5 21"/>
   </svg>
 )
 
@@ -81,17 +89,34 @@ const MODE_LABELS = {
   'ingredients': 'Ingredients'
 }
 
-function ControlTab({ queue, addToQueue, removeFromQueue, clearQueue, clearCompletedFromQueue, startQueue, stopQueue, isRunning, progress, settings }) {
+// Pause icon
+const PauseIcon = () => (
+  <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <rect x="6" y="4" width="4" height="16"/>
+    <rect x="14" y="4" width="4" height="16"/>
+  </svg>
+)
+
+const ForwardIcon = () => (
+  <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <polyline points="13 17 18 12 13 7"/>
+    <polyline points="6 17 11 12 6 7"/>
+  </svg>
+)
+
+function ControlTab({ queue, addToQueue, removeFromQueue, clearQueue, clearCompletedFromQueue, startQueue, stopQueue, continueQueue, isRunning, isPaused, progress, settings, storedImagePrompts, setStoredImagePrompts, storedImageTopic, setStoredImageTopic }) {
   const [promptText, setPromptText] = useState('')
-  const [selectedImages, setSelectedImages] = useState([])
-  const [imageSortOrder, setImageSortOrder] = useState('A-Z')
   const [showQueue, setShowQueue] = useState(true)
+  const [topic, setTopic] = useState('')
+  const [promptCount, setPromptCount] = useState('5')
+  const [isGenerating, setIsGenerating] = useState(false)
+  const [generateError, setGenerateError] = useState('')
   const fileInputRef = useRef(null)
-  const imageInputRef = useRef(null)
 
   // Get current mode from settings
   const creationMode = settings.creationMode || 'text-to-video'
   const isFramesMode = creationMode === 'frames-to-video'
+  const isCreateImageMode = creationMode === 'create-image'
 
   const handleImportFile = (e) => {
     const file = e.target.files?.[0]
@@ -102,23 +127,6 @@ function ControlTab({ queue, addToQueue, removeFromQueue, clearQueue, clearCompl
       }
       reader.readAsText(file)
     }
-  }
-
-  const handleSelectImages = (e) => {
-    const files = Array.from(e.target.files || [])
-    const imageFiles = files.map(file => ({
-      name: file.name,
-      url: URL.createObjectURL(file),
-      file
-    }))
-
-    // Sort images
-    const sorted = [...imageFiles].sort((a, b) => {
-      if (imageSortOrder === 'A-Z') return a.name.localeCompare(b.name)
-      return b.name.localeCompare(a.name)
-    })
-
-    setSelectedImages(sorted)
   }
 
   const parsePrompts = (text) => {
@@ -136,27 +144,11 @@ function ControlTab({ queue, addToQueue, removeFromQueue, clearQueue, clearCompl
   }
 
   const handleAddToQueue = () => {
-    if (isFramesMode) {
-      // Frames mode requires source images
-      const prompts = parsePrompts(promptText)
-      const items = selectedImages.map((img, idx) => ({
-        type: creationMode,
-        prompt: prompts[idx]?.prompt || '',
-        image: img,
-        folder: settings.downloadFolder || 'VeoFlow'
-      }))
-      if (items.length > 0) {
-        addToQueue(items)
-        setSelectedImages([])
-        setPromptText('')
-      }
-    } else {
-      // Text-to-Video, Create Image, Ingredients - prompts only
-      const items = parsePrompts(promptText)
-      if (items.length > 0) {
-        addToQueue(items)
-        setPromptText('')
-      }
+    // All modes now use prompts only (frames-to-video uses first frame from Google Flow UI)
+    const items = parsePrompts(promptText)
+    if (items.length > 0) {
+      addToQueue(items)
+      setPromptText('')
     }
   }
 
@@ -167,6 +159,49 @@ function ControlTab({ queue, addToQueue, removeFromQueue, clearQueue, clearCompl
   const handleStartQueue = () => {
     if (queue.length === 0) return
     startQueue()
+  }
+
+  const handleGeneratePrompts = async () => {
+    // For Frames to Video mode, we need stored image prompts as context
+    if (isFramesMode && storedImagePrompts.length === 0) {
+      setGenerateError('Please generate image prompts in Create Image mode first for character consistency')
+      return
+    }
+
+    // For Create Image mode, require topic input
+    if (!isFramesMode && !topic.trim()) return
+    if (isGenerating) return
+
+    setIsGenerating(true)
+    setGenerateError('')
+
+    try {
+      let prompts
+      if (isFramesMode) {
+        // Use stored image prompts as context for character consistency
+        prompts = await generateVideoPrompts(storedImageTopic, parseInt(promptCount), storedImagePrompts)
+      } else if (isCreateImageMode) {
+        // Generate image prompts and store them
+        prompts = await generatePrompts(topic.trim(), parseInt(promptCount))
+        // Store the prompts and topic for later use in Frames to Video mode
+        setStoredImagePrompts(prompts)
+        setStoredImageTopic(topic.trim())
+      } else {
+        // Text-to-Video and other modes
+        prompts = await generatePrompts(topic.trim(), parseInt(promptCount))
+      }
+      // Join prompts with double newlines (format expected by parsePrompts)
+      const formattedPrompts = prompts.join('\n\n')
+      setPromptText(formattedPrompts)
+      if (!isFramesMode) {
+        setTopic('') // Clear topic after successful generation (only for non-frames mode)
+      }
+    } catch (error) {
+      console.error('Failed to generate prompts:', error)
+      setGenerateError(error.message || 'Failed to generate prompts')
+    } finally {
+      setIsGenerating(false)
+    }
   }
 
   return (
@@ -182,6 +217,91 @@ function ControlTab({ queue, addToQueue, removeFromQueue, clearQueue, clearCompl
         <p className="text-xs text-text-muted mt-1">
           Change mode in Settings tab
         </p>
+      </div>
+
+      {/* AI Prompt Generator */}
+      <div className="space-y-2 p-3 bg-dark-surface rounded-lg border border-dark-border">
+        <label className="text-sm font-medium text-primary flex items-center gap-2">
+          <SparklesIcon />
+          {isFramesMode ? 'AI Video Prompt Generator' : 'AI Prompt Generator'}
+        </label>
+
+        {/* Frames to Video mode - show stored topic from Create Image mode */}
+        {isFramesMode ? (
+          <div className="space-y-2">
+            {storedImagePrompts.length > 0 ? (
+              <>
+                <div className="px-3 py-2 bg-dark-bg rounded border border-dark-border">
+                  <span className="text-xs text-text-muted">Topic from Create Image:</span>
+                  <p className="text-sm text-primary mt-1">{storedImageTopic}</p>
+                  <span className="text-xs text-text-muted">{storedImagePrompts.length} character prompts stored</span>
+                </div>
+                <div className="flex gap-2">
+                  <select
+                    value={promptCount}
+                    onChange={(e) => setPromptCount(e.target.value)}
+                    className="w-full text-sm"
+                    disabled={isGenerating}
+                  >
+                    <option value="3">3 Video Prompts</option>
+                    <option value="5">5 Video Prompts</option>
+                    <option value="7">7 Video Prompts</option>
+                    <option value="10">10 Video Prompts</option>
+                  </select>
+                </div>
+              </>
+            ) : (
+              <div className="px-3 py-2 bg-amber-500/10 border border-amber-500/30 rounded text-center">
+                <p className="text-xs text-amber-400">No image prompts stored yet</p>
+                <p className="text-xs text-text-muted mt-1">Generate prompts in Create Image mode first to maintain character consistency</p>
+              </div>
+            )}
+          </div>
+        ) : (
+          /* Create Image / Text-to-Video mode - show topic input */
+          <div className="flex gap-2">
+            <input
+              type="text"
+              value={topic}
+              onChange={(e) => setTopic(e.target.value)}
+              placeholder="Enter topic or story idea..."
+              className="flex-1 text-sm"
+              disabled={isGenerating}
+            />
+            <select
+              value={promptCount}
+              onChange={(e) => setPromptCount(e.target.value)}
+              className="w-16 text-sm"
+              disabled={isGenerating}
+            >
+              <option value="3">3</option>
+              <option value="5">5</option>
+              <option value="7">7</option>
+              <option value="10">10</option>
+            </select>
+          </div>
+        )}
+
+        <button
+          onClick={handleGeneratePrompts}
+          disabled={(isFramesMode ? storedImagePrompts.length === 0 : !topic.trim()) || isGenerating}
+          className={`btn w-full ${(isFramesMode ? storedImagePrompts.length === 0 : !topic.trim()) || isGenerating ? 'bg-dark-border text-text-muted cursor-not-allowed' : 'btn-primary'}`}
+        >
+          {isGenerating ? (
+            <>
+              <LoadingSpinner />
+              Generating...
+            </>
+          ) : (
+            <>
+              <SparklesIcon />
+              {isFramesMode ? 'Generate Video Prompts' : 'Generate Prompts'}
+            </>
+          )}
+        </button>
+        {generateError && (
+          <p className="text-xs text-accent-red">{generateError}</p>
+        )}
       </div>
 
       {/* Prompt List */}
@@ -207,42 +327,6 @@ function ControlTab({ queue, addToQueue, removeFromQueue, clearQueue, clearCompl
         </div>
       </div>
 
-      {/* Image List (only for frames-to-video) */}
-      {isFramesMode && (
-        <div className="space-y-2">
-          <label className="text-sm font-medium text-primary">Source Images</label>
-          <div className="flex gap-2">
-            <button
-              onClick={() => imageInputRef.current?.click()}
-              className="btn btn-secondary flex-1"
-            >
-              <ImageIcon />
-              Select images
-            </button>
-            <select
-              value={imageSortOrder}
-              onChange={(e) => setImageSortOrder(e.target.value)}
-              className="w-20"
-            >
-              <option value="A-Z">A-Z</option>
-              <option value="Z-A">Z-A</option>
-            </select>
-          </div>
-          <input
-            ref={imageInputRef}
-            type="file"
-            accept="image/*"
-            multiple
-            onChange={handleSelectImages}
-            className="hidden"
-          />
-          {selectedImages.length > 0 && (
-            <div className="text-xs text-text-muted">
-              {selectedImages.length} images selected
-            </div>
-          )}
-        </div>
-      )}
 
       {/* Prompt Text Area */}
       <textarea
@@ -256,8 +340,8 @@ function ControlTab({ queue, addToQueue, removeFromQueue, clearQueue, clearCompl
       <div className="flex gap-2">
         <button
           onClick={handleAddToQueue}
-          disabled={!promptText.trim() && selectedImages.length === 0}
-          className={`btn flex-1 ${!promptText.trim() && selectedImages.length === 0 ? 'bg-dark-border text-text-muted cursor-not-allowed' : 'btn-warning'}`}
+          disabled={!promptText.trim()}
+          className={`btn flex-1 ${!promptText.trim() ? 'bg-dark-border text-text-muted cursor-not-allowed' : 'btn-warning'}`}
         >
           <PlusIcon />
           Add to Queue
@@ -347,6 +431,31 @@ function ControlTab({ queue, addToQueue, removeFromQueue, clearQueue, clearCompl
         </div>
       </div>
 
+      {/* Paused for Reference */}
+      {isPaused && (
+        <div className="p-3 bg-amber-500/10 border border-amber-500/30 rounded-lg space-y-2">
+          <div className="flex items-center gap-2 text-amber-400">
+            <PauseIcon />
+            <span className="text-sm font-medium">
+              {isFramesMode ? 'Paused - Add First Frame' : 'Paused - Add Reference Image'}
+            </span>
+          </div>
+          <p className="text-xs text-text-muted">
+            {isFramesMode
+              ? 'Add the first frame image using Google Flow\'s "Add image" or use a result from previous generation. Then click Continue to generate this video.'
+              : 'Image generated! Click "Add to prompt" on the result to use as reference for next prompt, then click Continue.'
+            }
+          </p>
+          <button
+            onClick={continueQueue}
+            className="btn btn-warning w-full"
+          >
+            <ForwardIcon />
+            {isFramesMode ? 'Continue to Generate Video' : 'Continue to Next Prompt'}
+          </button>
+        </div>
+      )}
+
       {/* Start/Stop Buttons */}
       <div className="flex gap-2">
         <button
@@ -355,7 +464,7 @@ function ControlTab({ queue, addToQueue, removeFromQueue, clearQueue, clearCompl
           className={`btn flex-1 ${isRunning || queue.length === 0 ? 'bg-dark-border text-text-muted cursor-not-allowed' : 'btn-success'}`}
         >
           <PlayIcon />
-          {isRunning ? 'Running...' : 'Start Queue'}
+          {isRunning ? (isPaused ? 'Paused' : 'Running...') : 'Start Queue'}
         </button>
         <button
           onClick={stopQueue}

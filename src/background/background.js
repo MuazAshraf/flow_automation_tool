@@ -8,11 +8,15 @@ console.log('VeoFlow background service worker starting...')
 // State management
 let state = {
   isRunning: false,
+  isPausedForReference: false,
   currentTaskIndex: 0,
   queue: [],
   settings: {},
   activeTabId: null
 }
+
+// Promise resolver for continue signal
+let continueResolver = null
 
 // Flow URLs
 const FLOW_URLS = [
@@ -442,20 +446,63 @@ async function processQueue() {
     chrome.runtime.sendMessage({ type: 'QUEUE_UPDATE', data: state.queue }).catch(() => {})
 
     try {
+      const isLastTask = (i === tasksToProcess.length - 1)
+      const isImageTask = task.type === 'create-image'
+      const isFramesToVideo = task.type === 'frames-to-video'
+
       // Execute the task (enters prompt, clicks generate, etc.)
       // All tasks run in the SAME project - no new project click between tasks
       await executeTask(task, state.settings)
       log('info', `Task ${taskNum} prompt submitted`)
 
-      const isLastTask = (i === tasksToProcess.length - 1)
-      const isImageTask = task.type === 'create-image'
-
       if (isImageTask) {
-        // IMAGES: Fast mode - mark complete quickly
-        await sleep(800) // Just enough for generate to register
+        // IMAGES: Wait a bit for image to generate
+        await sleep(3000) // Wait for image generation to complete
         task.status = 'completed'
+
+        // Pause for reference image if enabled and not the last task
+        if (state.settings.pauseForReference && !isLastTask) {
+          log('info', 'Paused - waiting for reference image...')
+          state.isPausedForReference = true
+          updateProgress(taskNum, state.queue.length, 'Paused - Add reference image')
+
+          // Notify UI that we're paused
+          chrome.runtime.sendMessage({ type: 'QUEUE_PAUSED' }).catch(() => {})
+
+          // Wait for continue signal
+          await new Promise(resolve => {
+            continueResolver = resolve
+          })
+
+          state.isPausedForReference = false
+          chrome.runtime.sendMessage({ type: 'QUEUE_RESUMED' }).catch(() => {})
+          log('info', 'Continuing to next prompt...')
+        }
+      } else if (isFramesToVideo) {
+        // FRAMES TO VIDEO: Pause immediately after submitting so user can add first frame for next video
+        // Don't wait for current video to complete - let them queue up multiple videos faster
+        task.status = 'completed'
+
+        // Pause immediately if enabled and not the last task
+        if (state.settings.pauseForReference && !isLastTask) {
+          log('info', 'Paused - add first frame for next video...')
+          state.isPausedForReference = true
+          updateProgress(taskNum, state.queue.length, 'Paused - Add first frame for next video')
+
+          // Notify UI that we're paused
+          chrome.runtime.sendMessage({ type: 'QUEUE_PAUSED' }).catch(() => {})
+
+          // Wait for continue signal
+          await new Promise(resolve => {
+            continueResolver = resolve
+          })
+
+          state.isPausedForReference = false
+          chrome.runtime.sendMessage({ type: 'QUEUE_RESUMED' }).catch(() => {})
+          log('info', 'Continuing to next video prompt...')
+        }
       } else {
-        // VIDEOS: Wait for completion before marking as done
+        // TEXT-TO-VIDEO and other modes: Wait for completion before marking as done
         await waitForVideoPartialCompletion(state.settings, isLastTask)
         task.status = 'completed'
 
@@ -558,6 +605,12 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     case 'STOP_QUEUE':
       console.log('VeoFlow: STOP_QUEUE received')
       state.isRunning = false
+      state.isPausedForReference = false
+      // If waiting for continue, resolve it to break out
+      if (continueResolver) {
+        continueResolver()
+        continueResolver = null
+      }
       chrome.storage.local.set({ isRunning: false })
       sendStatusUpdate()
       log('info', 'Queue stopped by user')
@@ -566,6 +619,18 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         chrome.tabs.sendMessage(state.activeTabId, { type: 'RESET_SETTINGS_FLAG' }).catch(() => {})
       }
       sendResponse({ success: true })
+      break
+
+    case 'CONTINUE_QUEUE':
+      console.log('VeoFlow: CONTINUE_QUEUE received')
+      if (state.isPausedForReference && continueResolver) {
+        continueResolver()
+        continueResolver = null
+        log('info', 'Continuing queue after reference image...')
+        sendResponse({ success: true })
+      } else {
+        sendResponse({ success: false, message: 'Queue not paused' })
+      }
       break
 
     case 'GET_STATUS':

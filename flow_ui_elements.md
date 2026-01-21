@@ -130,3 +130,30 @@ Found 4 modes in the dropdown:
   <i ...>crop_portrait</i><span ...>Portrait (9:16)</span>
 </div>
 ```
+
+## 6. Add Reference Image / Ingredients Button
+
+**Location:** Bottom-left of the prompt input area (visible in "Ingredients to Video" and "Create Image" modes)
+
+**Selector:** Button containing `<i class="google-symbols">add</i>`
+
+```html
+<button class="sc-c177465c-1 hVamcH sc-d02e9a37-1 hvUQuN">
+  <i
+    class="sc-95c4f607-0 ojlmB google-symbols sc-d02e9a37-7 fJfKrq"
+    font-size="1.5rem"
+    color="currentColor"
+    >add</i
+  >
+  <div data-type="button-overlay" class="sc-c177465c-0 hWqLBn"></div>
+</button>
+```
+
+**JavaScript Selector:**
+
+```javascript
+// Find the "+" button for adding reference images
+const addButton = Array.from(document.querySelectorAll("button")).find(
+  (b) => b.querySelector("i")?.textContent === "add",
+);
+```
